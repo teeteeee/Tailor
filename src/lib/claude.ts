@@ -1,10 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { JobSchema, ResumeSchema, TailorResultSchema, type Job, type Resume, type TailorResult } from "./schema";
+import { JobSchema, TailorResultSchema, type Job, type Resume, type TailorResult } from "./schema";
 
-export const MODEL = "claude-opus-5";
+/**
+ * Haiku 4.5 by default: this is bounded rewriting against a schema, not open
+ * reasoning, and the cheaper model does it for roughly a tenth of the price.
+ * Set TAILOR_MODEL to a stronger model (e.g. claude-sonnet-5, claude-opus-5)
+ * to trade money for better prose.
+ */
+export const MODEL = process.env.TAILOR_MODEL?.trim() || "claude-haiku-4-5";
 
-/** Thrown when the server is missing credentials, so the UI can say so plainly. */
+/** Haiku 4.5 rejects output_config.effort; the Opus and Sonnet families accept it. */
+const SUPPORTS_EFFORT = !MODEL.includes("haiku");
+
+type Effort = "low" | "medium" | "high";
+
+function outputConfig<F>(format: F, effort: Effort): { format: F; effort?: Effort } {
+  return SUPPORTS_EFFORT ? { effort, format } : { format };
+}
+
 export class MissingApiKeyError extends Error {
   constructor() {
     super("ANTHROPIC_API_KEY is not set on the server.");
@@ -33,28 +47,39 @@ Hard rules — these override every other instruction:
 - If the candidate does not meet a requirement, say so in "gaps". Do not paper over it in the resume.
 `.trim();
 
-export async function parseResume(rawText: string): Promise<Resume> {
-  const client = getClient();
-  const response = await client.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    output_config: { effort: "medium", format: zodOutputFormat(ResumeSchema) },
-    system:
-      "You extract resumes into structured data. Copy the candidate's wording verbatim — this is " +
-      "transcription, not editing. Do not summarise, correct, embellish, or drop content. If a " +
-      "field is absent, return an empty string or empty array rather than guessing.",
-    messages: [{ role: "user", content: `Extract this resume:\n\n<resume>\n${rawText}\n</resume>` }],
-  });
-  if (!response.parsed_output) throw new Error("Could not read that resume — the model returned no structured output.");
-  return response.parsed_output;
-}
+const TAILOR_SYSTEM = `You are an experienced technical recruiter. You are given a candidate's resume
+as raw text and a structured job posting, and you return the resume restructured and rewritten for
+that posting.
+
+Do two things in one pass:
+
+1. Read the raw resume into the output schema. This half is transcription: keep every role, date,
+   employer, degree and certification exactly as written. Do not drop content because it looks
+   irrelevant.
+2. Tailor what you transcribed:
+   - Rewrite the summary to speak to this role in 2-3 sentences.
+   - Rewrite bullets that matter to this posting so the relevant work leads the sentence. Keep the
+     candidate's real scope. Strong bullets read: action verb, what was built, and the effect.
+   - Reorder bullets within a role so the most relevant sit first; reorder skill groups the same way.
+   - Fold the posting's vocabulary in only where the candidate's real experience supports it.
+   - Leave content that is irrelevant to this posting alone rather than padding it out.
+   - Cap each bullet at roughly 30 words.
+
+${HONESTY_RULES}
+
+Return the complete tailored resume in "resume" — including sections you did not touch — plus one
+entry in "changes" for every difference from the original wording. Change paths must be dot paths
+into that resume object (e.g. "summary", "experience.0.bullets.2", "skills.1.items"). For
+list-valued paths such as bullets or skill items, put one entry per line in before/after. For "add",
+"path" ends in the index the new element occupies and "before" is empty; for "remove", "after" is
+empty. Transcription alone is not a change — only log wording you actually altered.`;
 
 export async function analyzeJob(jobText: string): Promise<Job> {
   const client = getClient();
   const response = await client.messages.parse({
     model: MODEL,
     max_tokens: 8000,
-    output_config: { effort: "medium", format: zodOutputFormat(JobSchema) },
+    output_config: outputConfig(zodOutputFormat(JobSchema), "low"),
     system:
       "You break job postings into the requirements a candidate is actually screened on. Prefer the " +
       "posting's own vocabulary for keywords — that is what an ATS matches against. Drop boilerplate " +
@@ -65,37 +90,31 @@ export async function analyzeJob(jobText: string): Promise<Job> {
   return response.parsed_output;
 }
 
-export async function tailorResume(resume: Resume, job: Job): Promise<TailorResult> {
+/**
+ * Parse and tailor in a single call.
+ *
+ * The system prompt and the resume are cached, in that order, so tailoring the
+ * same resume against a second posting re-reads both from cache — the common
+ * case is one resume against many jobs.
+ */
+export async function tailorResume(resumeText: string, job: Job): Promise<TailorResult> {
   const client = getClient();
   const response = await client.messages.parse({
     model: MODEL,
-    max_tokens: 32000,
-    output_config: { effort: "high", format: zodOutputFormat(TailorResultSchema) },
-    system: `You are an experienced technical recruiter who rewrites resumes for a specific posting.
-
-${HONESTY_RULES}
-
-How to tailor:
-- Rewrite the summary to speak to this role in 2-3 sentences.
-- Rewrite bullets that matter to this posting so the relevant work leads the sentence. Keep the
-  candidate's real scope. Strong bullets read: action verb, what was built, and the effect.
-- Reorder bullets within a role so the most relevant sit first; reorder skill groups the same way.
-- Fold the posting's vocabulary in only where the candidate's real experience supports it.
-- Leave content that is irrelevant to this posting alone rather than padding it out.
-- Cap each bullet at roughly 30 words.
-
-Return the complete tailored resume in "resume" — including sections you did not touch — plus one
-entry in "changes" for every difference from the original. Change paths must be dot paths into that
-resume object (e.g. "summary", "experience.0.bullets.2", "skills.1.items"). For list-valued paths
-such as bullets or skill items, put one entry per line in before/after. For "add", "path" ends in
-the index the new element occupies and "before" is empty; for "remove", "after" is empty.`,
+    max_tokens: 16000,
+    output_config: outputConfig(zodOutputFormat(TailorResultSchema), "medium"),
+    system: [{ type: "text", text: TAILOR_SYSTEM, cache_control: { type: "ephemeral" } }],
     messages: [
       {
         role: "user",
-        content:
-          `Tailor this resume for this posting.\n\n` +
-          `<job>\n${JSON.stringify(job, null, 2)}\n</job>\n\n` +
-          `<resume>\n${JSON.stringify(resume, null, 2)}\n</resume>`,
+        content: [
+          {
+            type: "text",
+            text: `<resume>\n${resumeText}\n</resume>`,
+            cache_control: { type: "ephemeral" },
+          },
+          { type: "text", text: `<job>\n${JSON.stringify(job, null, 2)}\n</job>\n\nTailor the resume for this posting.` },
+        ],
       },
     ],
   });
@@ -108,7 +127,7 @@ export async function writeCoverLetter(resume: Resume, job: Job, notes: string):
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4000,
-    output_config: { effort: "medium" },
+    ...(SUPPORTS_EFFORT ? { output_config: { effort: "low" as const } } : {}),
     system: `You write short, specific cover letters — four paragraphs at most, no throat-clearing,
 no "I am writing to apply for". Concrete detail from the resume beats enthusiasm.
 

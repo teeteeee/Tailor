@@ -19,6 +19,9 @@ const STAGE_TEXT: Record<Exclude<Stage, "idle">, string> = {
   tailoring: "Tailoring, bullet by bullet…",
 };
 
+const MIN_RESUME_CHARS = 120;
+const MIN_JOB_CHARS = 80;
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -63,7 +66,7 @@ export default function Home() {
       const response = await fetch("/api/extract", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error ?? "Could not read that file.");
-      setResumeText(data.rawText as string);
+      setResumeText(data.text as string);
     } catch (cause) {
       setFilename(null);
       setError(cause instanceof Error ? cause.message : "Could not read that file.");
@@ -76,16 +79,13 @@ export default function Home() {
     setError(null);
     setLetter(null);
     try {
-      setStage("reading");
-      const { resume } = await postJson<{ resume: Resume }>("/api/extract", { text: resumeText });
-
       setStage("analyzing");
       const analyzed = await postJson<{ job: Job }>("/api/analyze", { text: jobText });
       setJob(analyzed.job);
 
       setStage("tailoring");
       const tailored = await postJson<{ result: TailorResult; coverage: Coverages }>("/api/tailor", {
-        resume,
+        resumeText,
         job: analyzed.job,
       });
       setResult(tailored.result);
@@ -206,7 +206,7 @@ export default function Home() {
             />
             <button
               type="button"
-              disabled={busy || resumeText.trim().length < 120 || jobText.trim().length < 80}
+              disabled={busy || resumeText.trim().length < MIN_RESUME_CHARS || jobText.trim().length < MIN_JOB_CHARS}
               onClick={handleTailor}
               className="mt-4 w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#0d1117]"
             >

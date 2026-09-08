@@ -11,6 +11,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Resume Tailor
 
 - `npm test` (vitest), `npm run typecheck`, `npm run lint`, `npm run build` all must pass.
+- Model calls live only in `src/lib/claude.ts`. The default model is Haiku 4.5, overridable with
+  `TAILOR_MODEL`; Haiku rejects `output_config.effort`, which is why `outputConfig()` omits it.
 - Model calls live only in `src/lib/claude.ts`. Every prompt there inherits `HONESTY_RULES`: the app
   reframes real experience and never invents any. Do not relax that in a prompt edit.
 - The model's contract is the zod schemas in `src/lib/schema.ts` — change a schema and the prompt

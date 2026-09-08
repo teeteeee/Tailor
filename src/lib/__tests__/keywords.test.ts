@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverageRatio, keywordCoverage } from "../keywords";
+import { coverageRatio, keywordCoverage, keywordCoverageInText } from "../keywords";
 import { makeResume } from "./fixtures";
 
 describe("keywordCoverage", () => {
@@ -33,5 +33,18 @@ describe("keywordCoverage", () => {
   it("computes a percentage", () => {
     expect(coverageRatio(keywordCoverage(makeResume(), ["Python", "Kubernetes"]))).toBe(50);
     expect(coverageRatio([])).toBe(0);
+  });
+});
+
+describe("keywordCoverageInText", () => {
+  it("matches against raw resume text", () => {
+    const text = "Ada Lovelace\nBuilt an ETL pipeline in Go and Python.";
+    const hits = keywordCoverageInText(text, ["Go", "Kubernetes"]);
+    expect(hits[0]).toEqual({ keyword: "Go", present: true, locations: ["Resume"] });
+    expect(hits[1]).toEqual({ keyword: "Kubernetes", present: false, locations: [] });
+  });
+
+  it("uses the same whole-word rule as the structured matcher", () => {
+    expect(keywordCoverageInText("Worked on Javanese linguistics.", ["Java"])[0].present).toBe(false);
   });
 });

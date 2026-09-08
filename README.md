@@ -17,8 +17,9 @@ cp .env.example .env.local     # then put a real key in it
 npm run dev                    # http://localhost:3000
 ```
 
-`ANTHROPIC_API_KEY` is read server-side only — the key never reaches the browser. Without one the
-app loads and tells you the key is missing rather than failing obscurely.
+`ANTHROPIC_API_KEY` is read server-side only — the key never reaches the browser. Uploading a resume
+and every export work without a key; only the analyse and tailor steps need one, and without it the
+app says so plainly rather than failing obscurely.
 
 ```bash
 npm test        # unit tests (vitest)
@@ -29,17 +30,38 @@ npm run typecheck
 
 ## How it works
 
-Three model calls, each returning schema-validated JSON via the Anthropic SDK's structured outputs
-(`output_config.format` + `zodOutputFormat`), on `claude-opus-5`:
+Two model calls, each returning schema-validated JSON via the Anthropic SDK's structured outputs
+(`output_config.format` + `zodOutputFormat`):
 
-| Step | Route | What it does |
-|---|---|---|
-| Parse | `POST /api/extract` | PDF/DOCX/TXT → text → a structured `Resume` |
-| Analyse | `POST /api/analyze` | Job posting → requirements, responsibilities, ATS keywords |
-| Tailor | `POST /api/tailor` | Resume + job → tailored resume, per-change log, score, gaps |
+| Step | Route | Model call? | What it does |
+|---|---|---|---|
+| Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
+| Analyse | `POST /api/analyze` | yes | Job posting → requirements, responsibilities, ATS keywords |
+| Tailor | `POST /api/tailor` | yes | Resume text + job → tailored resume, change log, score, gaps |
 
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
-and `POST /api/export` renders `.docx` (via `docx`), Markdown, or plain text.
+and `POST /api/export` renders `.docx` (via `docx`), Markdown, or plain text — neither export nor
+keyword coverage costs anything.
+
+### Keeping the bill small
+
+The default model is **Haiku 4.5** ($1/$5 per million input/output tokens). This is bounded
+rewriting against a schema rather than open reasoning, so the cheap model does it well. Three other
+choices pull in the same direction:
+
+- **Reading and tailoring happen in one call.** The resume is never round-tripped through a separate
+  parse step, which saves a call and stops the resume being sent twice.
+- **Thinking is off** and effort is low — on Haiku there is no `effort` parameter at all, and the app
+  omits it rather than sending one the model rejects.
+- **The system prompt and the resume are cached.** Tailoring the same resume against a second
+  posting re-reads both from cache, so the marginal application is cheaper than the first.
+
+Set `TAILOR_MODEL` to trade money for better prose:
+
+```bash
+TAILOR_MODEL=claude-sonnet-5    # $2/$10
+TAILOR_MODEL=claude-opus-5      # $5/$25, the strongest rewriting
+```
 
 Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a literal whole-word
 match of the posting's keywords against the resume text, before and after tailoring, because that is
@@ -63,7 +85,7 @@ src/
   components/             ResumePreview, ChangeList, Coverage, Dropzone, ScoreRing
   lib/
     schema.ts             zod schemas — the contract with the model
-    claude.ts             the three model calls and the honesty rules they share
+    claude.ts             the model calls, model selection, and the honesty rules they share
     extract.ts            PDF (unpdf) / DOCX (mammoth) / text
     apply.ts              accept-reject logic over change paths
     keywords.ts           deterministic ATS-style keyword matching

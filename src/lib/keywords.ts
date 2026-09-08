@@ -47,6 +47,18 @@ export function keywordCoverage(resume: Resume, keywords: string[]): KeywordHit[
   });
 }
 
+/**
+ * Coverage against the resume as raw text, for the "before" side — the
+ * original is never parsed into a Resume, so there are no sections to name.
+ */
+export function keywordCoverageInText(text: string, keywords: string[]): KeywordHit[] {
+  return keywords.map((keyword) => ({
+    keyword,
+    present: contains(text, keyword),
+    locations: contains(text, keyword) ? ["Resume"] : [],
+  }));
+}
+
 export function coverageRatio(hits: KeywordHit[]): number {
   if (hits.length === 0) return 0;
   return Math.round((hits.filter((hit) => hit.present).length / hits.length) * 100);
