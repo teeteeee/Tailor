@@ -38,6 +38,7 @@ Two model calls, each returning schema-validated JSON via the Anthropic SDK's st
 | Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
 | Analyse | `POST /api/analyze` | yes | Job posting → requirements, responsibilities, ATS keywords |
 | Tailor | `POST /api/tailor` | yes | Resume text + job → tailored resume, change log, score, gaps |
+| Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
 
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
 and `POST /api/export` renders `.docx` (via `docx`), Markdown, or plain text — neither export nor
@@ -66,6 +67,21 @@ TAILOR_MODEL=claude-opus-5      # $5/$25, the strongest rewriting
 Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a literal whole-word
 match of the posting's keywords against the resume text, before and after tailoring, because that is
 what an applicant tracking system actually does. The chips show where each keyword was found.
+
+### Closing a gap
+
+Gaps are clickable, because a gap is often something you did and never wrote down rather than
+something you have never done. Clicking one asks what you actually did; `POST /api/close-gap` then
+places your own words into the right section — a bullet on the role, or an entry in a skill group.
+
+The model is held to what you wrote: it rewords it into resume voice and does nothing else — no
+added metric, no inferred adjacent skill. If what you say doesn't actually evidence the gap, it
+changes nothing and tells you why. The result arrives as ordinary change entries, so a closed gap is
+reviewable and revertible like everything else.
+
+This is the only path that adds something the resume did not already say, and it works precisely
+because the evidence comes from you. Clicking a gap to have it written for you would be the one
+thing this app refuses to do.
 
 ### Reviewing changes
 
@@ -126,8 +142,8 @@ src/
   app/
     page.tsx              the whole flow: input → progress → review
     login/                the password prompt
-    api/                  extract · analyze · tailor · cover-letter · export · login
-  components/             ResumePreview, ChangeList, Coverage, Dropzone, ScoreRing
+    api/                  extract · analyze · tailor · close-gap · cover-letter · export · login
+  components/             ResumePreview, ChangeList, Coverage, Gaps, Dropzone, ScoreRing
   lib/
     schema.ts             zod schemas — the contract with the model
     claude.ts             the model calls, model selection, and the honesty rules they share

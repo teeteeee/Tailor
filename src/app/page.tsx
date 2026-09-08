@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
 import { Dropzone } from "@/components/Dropzone";
+import { Gaps, type GapState } from "@/components/Gaps";
 import { ResumePreview } from "@/components/ResumePreview";
 import { ScoreRing } from "@/components/ScoreRing";
-import { applyRejections } from "@/lib/apply";
+import { applyRejections, mergeChanges } from "@/lib/apply";
 import { coverageRatio, type KeywordHit } from "@/lib/keywords";
-import type { Job, Resume, TailorResult } from "@/lib/schema";
+import type { Change, Job, Resume, TailorResult } from "@/lib/schema";
 
 type Coverages = { before: KeywordHit[]; after: KeywordHit[] };
 type Stage = "idle" | "reading" | "analyzing" | "tailoring";
@@ -47,6 +48,9 @@ export default function Home() {
 
   const [letter, setLetter] = useState<string | null>(null);
   const [letterBusy, setLetterBusy] = useState(false);
+
+  const [gapState, setGapState] = useState<Record<string, GapState>>({});
+  const [busyGap, setBusyGap] = useState<string | null>(null);
 
   const busy = stage !== "idle";
 
@@ -91,6 +95,7 @@ export default function Home() {
       setResult(tailored.result);
       setCoverage(tailored.coverage);
       setRejected(new Set());
+      setGapState({});
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Something went wrong.");
     } finally {
@@ -134,12 +139,48 @@ export default function Home() {
     }
   }
 
+  /**
+   * Fold the candidate's own account of some experience into the resume. The
+   * result arrives as ordinary changes, so it stays reviewable and revertible
+   * like everything else the model wrote.
+   */
+  async function handleCloseGap(gap: string, evidence: string) {
+    if (!result || !job || !finalResume) return;
+    setBusyGap(gap);
+    setError(null);
+    try {
+      const data = await postJson<{
+        resume: Resume;
+        changes: Change[];
+        note: string;
+        coverage: KeywordHit[];
+      }>("/api/close-gap", { resume: finalResume, job, gap, evidence });
+
+      if (data.changes.length === 0) {
+        setGapState((previous) => ({
+          ...previous,
+          [gap]: { closed: false, note: data.note || "That didn't look like evidence for this one." },
+        }));
+        return;
+      }
+
+      setResult({ ...result, resume: data.resume, changes: mergeChanges(result.changes, data.changes) });
+      setCoverage((previous) => (previous ? { ...previous, after: data.coverage } : previous));
+      setGapState((previous) => ({ ...previous, [gap]: { closed: true, note: "" } }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not add that.");
+    } finally {
+      setBusyGap(null);
+    }
+  }
+
   function reset() {
     setResult(null);
     setCoverage(null);
     setJob(null);
     setLetter(null);
     setRejected(new Set());
+    setGapState({});
     setError(null);
   }
 
@@ -292,14 +333,10 @@ export default function Home() {
             {result.gaps.length > 0 ? (
               <section className="rounded-xl border border-line bg-surface p-4">
                 <h2 className="mb-2 text-sm font-semibold">Genuine gaps</h2>
-                <p className="mb-2 text-xs text-muted">Not covered by anything on your resume. Address these directly.</p>
-                <ul className="space-y-1.5 text-[12.5px]">
-                  {result.gaps.map((gap, index) => (
-                    <li key={index} className="rounded-md bg-warn-soft px-2.5 py-1.5 text-warn">
-                      {gap}
-                    </li>
-                  ))}
-                </ul>
+                <p className="mb-2 text-xs text-muted">
+                  Nothing on your resume evidences these. Click one if you have actually done it and left it out.
+                </p>
+                <Gaps gaps={result.gaps} state={gapState} busyGap={busyGap} onClose={handleCloseGap} />
               </section>
             ) : null}
 

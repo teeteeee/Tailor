@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRejections, getAtPath } from "../apply";
+import { applyRejections, getAtPath, mergeChanges } from "../apply";
 import type { Change } from "../schema";
 import { makeResume } from "./fixtures";
 
@@ -99,5 +99,39 @@ describe("getAtPath", () => {
     expect(getAtPath(resume, "experience.0.company")).toBe("Analytical Engines");
     expect(getAtPath(resume, "experience.0.bullets.1")).toBe("Mentored two engineers");
     expect(getAtPath(resume, "experience.5.company")).toBeUndefined();
+  });
+});
+
+describe("mergeChanges", () => {
+  const make = (id: string, path = "summary"): Change => change({ id, path });
+
+  it("appends changes with fresh ids untouched", () => {
+    const merged = mergeChanges([make("c1")], [make("g1")]);
+    expect(merged.map((c) => c.id)).toEqual(["c1", "g1"]);
+  });
+
+  it("renames a colliding id so rejecting one cannot revert another", () => {
+    const merged = mergeChanges([make("c1"), make("c2")], [make("c1")]);
+    expect(merged.map((c) => c.id)).toEqual(["c1", "c2", "c1-2"]);
+    expect(new Set(merged.map((c) => c.id)).size).toBe(3);
+  });
+
+  it("keeps renaming when the renamed id also collides", () => {
+    const merged = mergeChanges([make("c1"), make("c1-2")], [make("c1"), make("c1")]);
+    expect(new Set(merged.map((c) => c.id)).size).toBe(merged.length);
+    expect(merged.map((c) => c.id)).toEqual(["c1", "c1-2", "c1-3", "c1-4"]);
+  });
+
+  it("leaves the existing log untouched", () => {
+    const existing = [make("c1")];
+    mergeChanges(existing, [make("c1")]);
+    expect(existing).toHaveLength(1);
+    expect(existing[0].id).toBe("c1");
+  });
+
+  it("keeps a renamed change revertible against the resume", () => {
+    const tailored = makeResume({ summary: "new" });
+    const merged = mergeChanges([make("c1")], [change({ id: "c1", before: "original", after: "new" })]);
+    expect(applyRejections(tailored, merged, [merged[1].id]).summary).toBe("original");
   });
 });

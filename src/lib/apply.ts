@@ -123,3 +123,24 @@ function indexOf(change: Change): number {
   const index = Number(change.path.split(".").pop());
   return Number.isInteger(index) ? index : 0;
 }
+
+/**
+ * Append newly generated changes to the existing log, renaming any whose id
+ * collides. Ids come from separate model calls that each start counting at
+ * "c1", and a duplicate id would make rejecting one change revert another.
+ */
+export function mergeChanges(existing: Change[], incoming: Change[]): Change[] {
+  const used = new Set(existing.map((change) => change.id));
+  const renamed = incoming.map((change) => {
+    if (!used.has(change.id)) {
+      used.add(change.id);
+      return change;
+    }
+    let suffix = 2;
+    while (used.has(`${change.id}-${suffix}`)) suffix++;
+    const id = `${change.id}-${suffix}`;
+    used.add(id);
+    return { ...change, id };
+  });
+  return [...existing, ...renamed];
+}

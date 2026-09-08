@@ -1,6 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { JobSchema, TailorResultSchema, type Job, type Resume, type TailorResult } from "./schema";
+import {
+  GapFillSchema,
+  JobSchema,
+  TailorResultSchema,
+  type GapFill,
+  type Job,
+  type Resume,
+  type TailorResult,
+} from "./schema";
 
 /**
  * Haiku 4.5 by default: this is bounded rewriting against a schema, not open
@@ -189,4 +197,50 @@ ${HONESTY_RULES}`,
     .map((block) => block.text)
     .join("\n")
     .trim();
+}
+
+/**
+ * Place a candidate's own account of some experience into their resume.
+ *
+ * This is the one path that adds something the resume did not previously say,
+ * which is exactly why the evidence must come from the candidate and the model
+ * is held to it: it may reword what they wrote, and nothing else.
+ */
+export async function closeGap(resume: Resume, job: Job, gap: string, evidence: string): Promise<GapFill> {
+  const client = getClient();
+  const response = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 16000,
+    output_config: outputConfig(zodOutputFormat(GapFillSchema), "medium"),
+    system: `The candidate is filling a gap in their resume. They have told you, in their own words,
+what they actually did. Place it into the resume.
+
+${HONESTY_RULES}
+
+Two further rules for this task specifically:
+- Everything you write must come from the candidate's statement below. Reword it into resume voice;
+  do not extend it, do not add a metric it does not contain, and do not infer adjacent skills.
+- If their statement does not actually evidence the gap, change nothing: return the resume exactly as
+  given, an empty "changes" list, and say so in one sentence in "note".
+
+Where it goes:
+- Work they did in a role already on the resume becomes a bullet on that role.
+- A tool or technology becomes an entry in the most fitting existing skill group.
+- Anything that fits nowhere becomes a bullet on the most recent relevant role.
+
+Append to arrays rather than inserting into the middle of them, so existing positions do not move.
+Return the complete resume, plus one change entry per edit, with dot paths into that resume.`,
+    messages: [
+      {
+        role: "user",
+        content:
+          `The posting asks for: ${gap}\n\n` +
+          `The candidate says:\n${evidence.trim()}\n\n` +
+          `<job>\n${JSON.stringify(job, null, 2)}\n</job>\n\n` +
+          `<resume>\n${JSON.stringify(resume, null, 2)}\n</resume>`,
+      },
+    ],
+  });
+  if (!response.parsed_output) throw new Error("Could not place that — the model returned no structured output.");
+  return response.parsed_output;
 }
