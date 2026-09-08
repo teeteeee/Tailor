@@ -139,6 +139,26 @@ src/
     export.ts, docx.ts    Markdown / plain text / Word output
 ```
 
+## When it won't authenticate
+
+`.env.local` lives at the project root, beside `package.json`, and is read **once at startup** — after
+editing it, stop the dev server and start it again.
+
+The app checks the key's shape before spending a request, so most mistakes come back naming the
+cause rather than as a bare "API key is invalid":
+
+| What you see | What happened |
+|---|---|
+| "still contains `...`" | The `sk-ant-...` placeholder, or a key copied from the console after it was abbreviated on screen. The console shows a key in full only once — generate a fresh one |
+| "doesn't start with `sk-ant-`" | Not an API key. It needs to come from console.anthropic.com/settings/keys |
+| "only N characters" | The paste was truncated |
+| "Anthropic rejected the API key" | The shape is right, so the key itself is revoked, from another organisation, or edited after copying |
+
+Wrapping quotes and trailing whitespace are stripped automatically, so `KEY="sk-ant-..."` and a
+trailing newline both work.
+
+A 401 is always about the key. An exhausted balance is a different error mentioning credit.
+
 ## Known limits
 
 - **Scanned PDFs** have no text layer and there is no OCR — paste the text instead.

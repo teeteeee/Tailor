@@ -26,11 +26,53 @@ export class MissingApiKeyError extends Error {
   }
 }
 
-export function getClient(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
-    throw new MissingApiKeyError();
+/** A key that is present but visibly wrong — caught before spending a request on it. */
+export class BadApiKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BadApiKeyError";
   }
-  return new Anthropic();
+}
+
+/**
+ * Pasting a key into a .env file routinely picks up wrapping quotes, a
+ * trailing newline, or a stray space. All three are sent verbatim and come
+ * back as a 401 that looks like a bad key, so strip them here.
+ */
+export function normalizeApiKey(raw: string): string {
+  return raw.trim().replace(/^(['"])([\s\S]*)\1$/, "$2").trim();
+}
+
+/**
+ * The mistakes that produce a 401. Returning the reason beats letting the
+ * request fail with "API key is invalid", which says nothing about the cause.
+ */
+export function apiKeyProblem(key: string): string | null {
+  if (key.includes("...") || key.includes("\u2026")) {
+    return "Your ANTHROPIC_API_KEY still contains \"...\" — that is either the placeholder from .env.example or a key copied from the console after it was abbreviated for display. Generate a fresh key and copy it in one go.";
+  }
+  if (!key.startsWith("sk-ant-")) {
+    return "Your ANTHROPIC_API_KEY doesn't start with \"sk-ant-\". Check you copied an API key from console.anthropic.com/settings/keys and not some other token.";
+  }
+  if (key.length < 40) {
+    return `Your ANTHROPIC_API_KEY is only ${key.length} characters, which is too short to be a whole key — it looks truncated. Generate a fresh one and copy all of it.`;
+  }
+  return null;
+}
+
+export function getClient(): Anthropic {
+  const apiKey = normalizeApiKey(process.env.ANTHROPIC_API_KEY ?? "");
+  if (apiKey) {
+    const problem = apiKeyProblem(apiKey);
+    if (problem) throw new BadApiKeyError(problem);
+    return new Anthropic({ apiKey });
+  }
+
+  // An OAuth token from `ant auth login` has a different shape, so it gets no
+  // format checks — only the presence check.
+  if (normalizeApiKey(process.env.ANTHROPIC_AUTH_TOKEN ?? "")) return new Anthropic();
+
+  throw new MissingApiKeyError();
 }
 
 /**
