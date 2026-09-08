@@ -75,13 +75,58 @@ change starts accepted; unticking one reverts exactly that path (`src/lib/applyR
 preview and every export always reflect what you actually approved. Small edits render as a
 word-level diff; near-total rewrites render as before/after, which is easier to read.
 
+## Deploying it
+
+**GitHub Pages will not work.** Pages serves static files, and this app needs a server: the API key
+lives in server-side routes and must never reach the browser. A static build would mean shipping the
+key to every visitor.
+
+Vercel is the path of least resistance — same people who make Next.js, and it deploys from the
+GitHub repo on every push.
+
+1. Push this branch to GitHub (already done if you're reading this there).
+2. At [vercel.com/new](https://vercel.com/new), import the repository. Everything auto-detects; no
+   build settings to change.
+3. Add the environment variables under **Settings → Environment Variables**:
+
+   | Variable | Required | Notes |
+   |---|---|---|
+   | `ANTHROPIC_API_KEY` | yes | Nothing can be tailored without it |
+   | `APP_PASSWORD` | yes in production | The password the site asks for. Make it long |
+   | `TAILOR_MODEL` | no | Defaults to `claude-haiku-4-5` |
+
+4. Deploy. Redeploy after changing an environment variable — they are read at boot.
+
+Set the variables **before** the first deploy if you can. A deployment without `APP_PASSWORD` is
+closed rather than open (see below), so nothing is exposed either way, but the site will return 503
+until you set one.
+
+### The password gate
+
+A public URL wired to a billable API key is somebody else's free API. So `src/proxy.ts` sits in front
+of everything:
+
+- No session → HTML routes redirect to `/login`, API routes return `401` JSON rather than a login
+  page, so an expired session mid-use reads as an error and not as garbled output.
+- The cookie holds an HMAC of the password, not the password, and is `httpOnly`, `sameSite=lax`, and
+  `secure` in production. A stolen cookie can't be turned back into the password.
+- Wrong-password responses are delayed half a second, which makes brute forcing slow and noisy.
+- **`APP_PASSWORD` unset in production closes the site entirely** (503). Forgetting an environment
+  variable should not silently publish an open door. Locally it stays open so development needs no
+  setup.
+
+It is one shared password, not user accounts — right for something you use yourself or share with a
+few people, not for a public service.
+
 ## Layout
 
 ```
 src/
+  proxy.ts                the password gate, in front of every route
   app/
     page.tsx              the whole flow: input → progress → review
-    api/                  extract · analyze · tailor · cover-letter · export
+    login/                the password prompt
+    api/                  extract · analyze · tailor · cover-letter · export · login
   components/             ResumePreview, ChangeList, Coverage, Dropzone, ScoreRing
   lib/
     schema.ts             zod schemas — the contract with the model
@@ -90,6 +135,7 @@ src/
     apply.ts              accept-reject logic over change paths
     keywords.ts           deterministic ATS-style keyword matching
     diff.ts               word-level diff for the change list
+    auth.ts               password hashing and constant-time comparison
     export.ts, docx.ts    Markdown / plain text / Word output
 ```
 

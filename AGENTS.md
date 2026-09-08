@@ -18,3 +18,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The model's contract is the zod schemas in `src/lib/schema.ts` — change a schema and the prompt
   descriptions that go with it together.
 - Keyword coverage is deliberately deterministic (`src/lib/keywords.ts`), not model-judged.
+- `src/proxy.ts` gates every route behind `APP_PASSWORD`. It must stay fail-closed in production:
+  no password set means 503, never an open site. API routes get 401 JSON, not a redirect.

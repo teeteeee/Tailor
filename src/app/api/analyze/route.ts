@@ -3,7 +3,8 @@ import { analyzeJob } from "@/lib/claude";
 import { errorResponse } from "@/lib/http";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// Vercel's free tier caps function duration well below 300s; 60 deploys everywhere.
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
