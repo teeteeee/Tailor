@@ -29,3 +29,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Tailoring is by exception: leaving a bullet as written is the normal outcome, and every change
   must name the posting requirement it serves. Do not soften that back into general "improve the
   bullets" phrasing — over-rewriting is both the main quality complaint and a latency cost.
+- The PDF (`src/lib/pdf.ts`) is drawn with pdfkit, never a headless browser — no Chromium on
+  serverless. Keep it single-column and keep letter-spacing off the headings: `pdf.test.ts` extracts
+  the text back out and asserts an ATS would read them intact.

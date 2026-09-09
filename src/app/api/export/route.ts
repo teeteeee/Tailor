@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toDocxBuffer } from "@/lib/docx";
+import { toPdfBuffer } from "@/lib/pdf";
 import { slugify, toMarkdown, toPlainText } from "@/lib/export";
 import { ResumeSchema } from "@/lib/schema";
 import { errorResponse } from "@/lib/http";
 
 export const runtime = "nodejs";
 
-const FORMATS = ["docx", "md", "txt"] as const;
+const FORMATS = ["pdf", "docx", "md", "txt"] as const;
 type Format = (typeof FORMATS)[number];
 
 export async function POST(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Missing or malformed resume data." }, { status: 400 });
     }
-    const format = (body.format ?? "docx") as Format;
+    const format = (body.format ?? "pdf") as Format;
     if (!FORMATS.includes(format)) {
       return NextResponse.json({ error: `Unsupported format "${body.format}".` }, { status: 400 });
     }
@@ -27,6 +28,13 @@ export async function POST(request: NextRequest) {
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     };
+
+    if (format === "pdf") {
+      const buffer = await toPdfBuffer(resume);
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: { ...headers, "Content-Type": "application/pdf" },
+      });
+    }
 
     if (format === "docx") {
       const buffer = await toDocxBuffer(resume);

@@ -147,7 +147,7 @@ export default function Home() {
     }
   }
 
-  async function handleExport(format: "docx" | "md" | "txt") {
+  async function handleExport(format: "pdf" | "docx" | "md" | "txt") {
     if (!finalResume) return;
     setError(null);
     try {
@@ -161,7 +161,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${(finalResume.contact.name || "resume").toLowerCase().replace(/\s+/g, "-")}.${format}`;
+      link.download = `${(finalResume.contact.name || "resume").toLowerCase().replace(/\s+/g, "-")}-resume.${format}`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
@@ -341,37 +341,28 @@ export default function Home() {
             </section>
 
             <section className="rounded-xl border border-line bg-surface p-4">
-              <h2 className="mb-3 text-sm font-semibold">Export</h2>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleExport("docx")}
-                  className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-white dark:text-[#0d1117]"
-                >
-                  Word (.docx)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="rounded-md border border-line px-3 py-2 text-sm hover:bg-surface-2"
-                >
-                  Print / PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExport("md")}
-                  className="rounded-md border border-line px-3 py-2 text-sm hover:bg-surface-2"
-                >
-                  Markdown
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExport("txt")}
-                  className="rounded-md border border-line px-3 py-2 text-sm hover:bg-surface-2"
-                >
-                  Plain text
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleExport("pdf")}
+                className="w-full rounded-md bg-accent px-4 py-3 text-sm font-medium text-white dark:text-[#0d1117]"
+              >
+                Download resume
+              </button>
+              <p className="mt-2 text-center text-xs text-muted">
+                PDF ·{" "}
+                {(["docx", "md", "txt"] as const).map((format, index) => (
+                  <span key={format}>
+                    {index > 0 ? " · " : ""}
+                    <button
+                      type="button"
+                      onClick={() => handleExport(format)}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {{ docx: "Word", md: "Markdown", txt: "Plain text" }[format]}
+                    </button>
+                  </span>
+                ))}
+              </p>
             </section>
 
             {coverage ? (

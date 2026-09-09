@@ -42,8 +42,8 @@ total time instead of the two adding up.
 | Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
 
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
-and `POST /api/export` renders `.docx` (via `docx`), Markdown, or plain text — neither export nor
-keyword coverage costs anything.
+and `POST /api/export` renders PDF (via `pdfkit`), `.docx` (via `docx`), Markdown, or plain text —
+neither export nor keyword coverage costs anything.
 
 ### Keeping it quick
 
@@ -203,9 +203,21 @@ trailing newline both work.
 
 A 401 is always about the key. An exhausted balance is a different error mentioning credit.
 
+### The PDF
+
+**Download resume** always gives a PDF. It is drawn directly with `pdfkit` rather than by printing
+HTML through a headless browser, so there is no Chromium binary to ship and it runs anywhere the app
+does, serverless included. The built-in Helvetica means no font files either.
+
+It is deliberately plain, single-column, and free of letter-spacing on the headings: an ATS reading
+the PDF gets `SUMMARY`, not `S U M M A RY`. A test extracts the text back out of the generated PDF
+and asserts every heading and bullet survives, because a resume that renders beautifully and parses
+badly is a worse resume.
+
+Word, Markdown and plain text are still there as small links under the button — some applications
+want a `.docx`.
+
 ## Known limits
 
 - **Scanned PDFs** have no text layer and there is no OCR — paste the text instead.
-- **Print to PDF** goes through the browser's own print dialog (`@media print` hides the app chrome
-  and prints just the resume). There is no server-side PDF renderer.
 - Nothing is stored. Reloading the page loses the session.
