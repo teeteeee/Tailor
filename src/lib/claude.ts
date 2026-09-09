@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { dropNoOpChanges } from "./apply";
 import {
   GapFillSchema,
   JobSchema,
@@ -106,14 +107,31 @@ Do two things in one pass:
 1. Read the raw resume into the output schema. This half is transcription: keep every role, date,
    employer, degree and certification exactly as written. Do not drop content because it looks
    irrelevant.
-2. Tailor what you transcribed:
-   - Rewrite the summary to speak to this role in 2-3 sentences.
-   - Rewrite bullets that matter to this posting so the relevant work leads the sentence. Keep the
-     candidate's real scope. Strong bullets read: action verb, what was built, and the effect.
-   - Reorder bullets within a role so the most relevant sit first; reorder skill groups the same way.
-   - Fold the posting's vocabulary in only where the candidate's real experience supports it.
-   - Leave content that is irrelevant to this posting alone rather than padding it out.
-   - Cap each bullet at roughly 30 words.
+2. Tailor what you transcribed — by exception, not by default.
+
+   Leaving a bullet exactly as the candidate wrote it is the normal outcome. Take the bullets one
+   at a time and ask: what does this posting require that this bullet fails to show? If you cannot
+   name a specific requirement the edit serves, leave the bullet alone. Rewriting for polish,
+   house style, or stronger verbs is not tailoring — it just costs the candidate the wording they
+   chose, and they have to read every change you make.
+
+   Reach for the cheapest move that works, in this order:
+   - Reorder. Moving a relevant bullet to the top of a role changes what gets read first and
+     changes no wording at all. The same goes for skill groups.
+   - Rewrite the summary. This one usually earns it: it is the only part written to address a
+     specific role.
+   - Rewrite a bullet — but only where it buries work this posting asks for, or omits vocabulary
+     the posting screens on that the candidate's own experience already supports. Keep their scope
+     and their facts, lead with the relevant part, stay under about 30 words.
+
+   Leave sections the posting does not care about entirely alone rather than padding them out.
+
+   On a typical resume this is a handful of bullet rewrites, not all of them. If you find yourself
+   changing most of the bullets, you are rewriting rather than tailoring — go back and keep the
+   ones that already work.
+
+   Every entry in "changes" must name, in its rationale, the requirement from this posting it
+   serves. A change you cannot justify that way should not have been made.
 
 ${HONESTY_RULES}
 
@@ -179,7 +197,8 @@ export async function tailorResume(
 
   const message = await stream.finalMessage();
   if (!message.parsed_output) throw new Error("Tailoring failed — the model returned no structured output.");
-  return message.parsed_output;
+  const tailored = message.parsed_output;
+  return { ...tailored, changes: dropNoOpChanges(tailored.changes) };
 }
 
 export async function writeCoverLetter(resume: Resume, job: Job, notes: string): Promise<string> {
@@ -252,5 +271,6 @@ Return the complete resume, plus one change entry per edit, with dot paths into 
     ],
   });
   if (!response.parsed_output) throw new Error("Could not place that — the model returned no structured output.");
-  return response.parsed_output;
+  const filled = response.parsed_output;
+  return { ...filled, changes: dropNoOpChanges(filled.changes) };
 }

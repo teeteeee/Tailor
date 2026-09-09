@@ -26,3 +26,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `/api/tailor` streams newline-delimited JSON (progress lines, then one result line) and runs
   analyzeJob and tailorResume concurrently. Errors after the first byte must travel inside the
   stream as an `error` line — use `describeError()` so the wording matches `errorResponse()`.
+- Tailoring is by exception: leaving a bullet as written is the normal outcome, and every change
+  must name the posting requirement it serves. Do not soften that back into general "improve the
+  bullets" phrasing — over-rewriting is both the main quality complaint and a latency cost.

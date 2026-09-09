@@ -85,6 +85,17 @@ Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a
 match of the posting's keywords against the resume text, before and after tailoring, because that is
 what an applicant tracking system actually does. The chips show where each keyword was found.
 
+### Restraint
+
+Tailoring edits by exception. Leaving a bullet exactly as written is the normal outcome; a rewrite
+has to be justified by a specific requirement in the posting, and every entry in the change list
+names the requirement it serves. Reordering is preferred over rewriting where it does the job, since
+it changes what gets read first without touching the candidate's words.
+
+Edits that turn out to change nothing — identical before and after, or a whitespace-only difference —
+are dropped server-side before the change list is returned, so the review list is only things worth
+reviewing.
+
 ### Closing a gap
 
 Gaps are clickable, because a gap is often something you did and never wrote down rather than

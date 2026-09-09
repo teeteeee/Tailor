@@ -144,3 +144,16 @@ export function mergeChanges(existing: Change[], incoming: Change[]): Change[] {
   });
   return [...existing, ...renamed];
 }
+
+/**
+ * Discard edits that do not actually change anything.
+ *
+ * A model asked to log its edits will sometimes report a bullet it left alone,
+ * or one it altered only in whitespace. Those are noise in the review list —
+ * the reader has to check each entry, and an entry that changes nothing wastes
+ * that attention. Additions and removals always do something, so they stay.
+ */
+export function dropNoOpChanges(changes: Change[]): Change[] {
+  const collapse = (value: string) => value.replace(/\s+/g, " ").trim();
+  return changes.filter((change) => change.kind !== "edit" || collapse(change.before) !== collapse(change.after));
+}

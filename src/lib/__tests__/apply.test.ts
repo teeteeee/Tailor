@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRejections, getAtPath, mergeChanges } from "../apply";
+import { applyRejections, dropNoOpChanges, getAtPath, mergeChanges } from "../apply";
 import type { Change } from "../schema";
 import { makeResume } from "./fixtures";
 
@@ -133,5 +133,43 @@ describe("mergeChanges", () => {
     const tailored = makeResume({ summary: "new" });
     const merged = mergeChanges([make("c1")], [change({ id: "c1", before: "original", after: "new" })]);
     expect(applyRejections(tailored, merged, [merged[1].id]).summary).toBe("original");
+  });
+});
+
+describe("dropNoOpChanges", () => {
+  it("drops an edit whose before and after are identical", () => {
+    const kept = dropNoOpChanges([change({ id: "a", before: "Built an ETL pipeline", after: "Built an ETL pipeline" })]);
+    expect(kept).toHaveLength(0);
+  });
+
+  it("drops an edit that differs only in whitespace", () => {
+    const kept = dropNoOpChanges([
+      change({ id: "a", before: "Built  an ETL\npipeline ", after: "Built an ETL pipeline" }),
+    ]);
+    expect(kept).toHaveLength(0);
+  });
+
+  it("keeps a real edit, including a small one", () => {
+    const kept = dropNoOpChanges([
+      change({ id: "a", before: "Built an ETL pipeline", after: "Built an ETL pipeline in Go" }),
+    ]);
+    expect(kept.map((c) => c.id)).toEqual(["a"]);
+  });
+
+  it("keeps additions and removals, which always do something", () => {
+    const kept = dropNoOpChanges([
+      change({ id: "a", kind: "add", before: "", after: "" }),
+      change({ id: "b", kind: "remove", before: "gone", after: "" }),
+    ]);
+    expect(kept.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+
+  it("preserves the order of what it keeps", () => {
+    const kept = dropNoOpChanges([
+      change({ id: "a", before: "x", after: "y" }),
+      change({ id: "b", before: "same", after: "same" }),
+      change({ id: "c", before: "p", after: "q" }),
+    ]);
+    expect(kept.map((c) => c.id)).toEqual(["a", "c"]);
   });
 });
