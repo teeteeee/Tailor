@@ -101,6 +101,17 @@ single-user convenience.
 React reads it through `useSyncExternalStore` rather than an effect, because `localStorage` does not
 exist during server rendering. A `storage` listener keeps two open tabs in agreement.
 
+### When the model goes off-schema
+
+Structured outputs guide generation but do not guarantee it, so `src/lib/parse.ts` validates the
+change list entry by entry rather than as a whole. Losing one entry from the review list is a far
+smaller failure than losing a resume that took half a minute to write.
+
+An unrecognised `kind` is repaired rather than discarded — such an entry still carries its path and
+its before and after text, which is everything accepting or rejecting it needs. Only entries too
+broken to repair are dropped, with a server-side warning. A malformed **resume** still fails loudly:
+that is not something to paper over.
+
 ### Restraint
 
 Tailoring edits by exception. Leaving a bullet exactly as written is the normal outcome; a rewrite

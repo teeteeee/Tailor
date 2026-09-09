@@ -38,3 +38,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `/api/answer` writes application answers from the tailored resume and the posting only. Every
   specific must be traceable to the resume; where it is silent the answer says so rather than
   inventing. It streams over the shared NDJSON helper (`src/lib/ndjson.ts`).
+- Model output is parsed by `src/lib/parse.ts`, not the SDK's auto-parser: a single malformed
+  change entry must not discard a whole response. An unrecognised `kind` is repaired into the edit
+  it functionally is; only what cannot be repaired is dropped, and the resume still fails loudly.
+  When editing the tailoring prompt, check every operation it recommends is expressible in
+  `ChangeSchema` — telling the model to reorder while `kind` had no such value is what caused a
+  crash in the wild.

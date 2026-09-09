@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
 import { dropNoOpChanges } from "./apply";
+import { parseGapFill, parseTailorResult } from "./parse";
 import {
   GapFillSchema,
   JobSchema,
@@ -26,6 +28,27 @@ type Effort = "low" | "medium" | "high";
 
 function outputConfig<F>(format: F, effort: Effort): { format: F; effort?: Effort } {
   return SUPPORTS_EFFORT ? { effort, format } : { format };
+}
+
+/**
+ * The schema still constrains generation, but with the SDK's auto-parser
+ * stripped off: dropping `parse` leaves a plain JSON-schema output format, so
+ * validation becomes ours to do leniently rather than the SDK's to throw on.
+ */
+function generationFormat(schema: z.ZodType) {
+  const parseable = zodOutputFormat(schema);
+  const format: Record<string, unknown> = { ...parseable };
+  delete format.parse;
+  return format as Omit<typeof parseable, "parse">;
+}
+
+function textOf(message: { content: Anthropic.ContentBlock[] }, whenEmpty: string): string {
+  const text = message.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+  if (!text.trim()) throw new Error(whenEmpty);
+  return text;
 }
 
 export class MissingApiKeyError extends Error {
@@ -117,7 +140,8 @@ Do two things in one pass:
 
    Reach for the cheapest move that works, in this order:
    - Reorder. Moving a relevant bullet to the top of a role changes what gets read first and
-     changes no wording at all. The same goes for skill groups.
+     changes no wording at all. The same goes for skill groups. Reordering is not logged in
+     "changes" — nothing was written differently, so there is nothing to review.
    - Rewrite the summary. This one usually earns it: it is the only part written to address a
      specific role.
    - Rewrite a bullet — but only where it buries work this posting asks for, or omits vocabulary
@@ -140,7 +164,11 @@ entry in "changes" for every difference from the original wording. Change paths 
 into that resume object (e.g. "summary", "experience.0.bullets.2", "skills.1.items"). For
 list-valued paths such as bullets or skill items, put one entry per line in before/after. For "add",
 "path" ends in the index the new element occupies and "before" is empty; for "remove", "after" is
-empty. Transcription alone is not a change — only log wording you actually altered.`;
+empty. Transcription alone is not a change — only log wording you actually altered.
+
+"kind" is exactly one of "edit", "add" or "remove". There is no other value: an operation those
+three do not name — a reorder, a merge, a split — is either not a change at all, or is the edits it
+is made of.`;
 
 export async function analyzeJob(jobText: string): Promise<Job> {
   const client = getClient();
@@ -178,7 +206,7 @@ export async function tailorResume(
   const stream = client.messages.stream({
     model: MODEL,
     max_tokens: 16000,
-    output_config: outputConfig(zodOutputFormat(TailorResultSchema), "medium"),
+    output_config: outputConfig(generationFormat(TailorResultSchema), "medium"),
     system: [{ type: "text", text: TAILOR_SYSTEM, cache_control: { type: "ephemeral" } }],
     messages: [
       {
@@ -196,8 +224,7 @@ export async function tailorResume(
   if (onProgress) stream.on("text", (_delta, snapshot) => onProgress(snapshot.length));
 
   const message = await stream.finalMessage();
-  if (!message.parsed_output) throw new Error("Tailoring failed — the model returned no structured output.");
-  const tailored = message.parsed_output;
+  const tailored = parseTailorResult(textOf(message, "Tailoring failed — the model returned no structured output."));
   return { ...tailored, changes: dropNoOpChanges(tailored.changes) };
 }
 
@@ -237,10 +264,10 @@ ${HONESTY_RULES}`,
  */
 export async function closeGap(resume: Resume, job: Job, gap: string, evidence: string): Promise<GapFill> {
   const client = getClient();
-  const response = await client.messages.parse({
+  const response = await client.messages.create({
     model: MODEL,
     max_tokens: 16000,
-    output_config: outputConfig(zodOutputFormat(GapFillSchema), "medium"),
+    output_config: outputConfig(generationFormat(GapFillSchema), "medium"),
     system: `The candidate is filling a gap in their resume. They have told you, in their own words,
 what they actually did. Place it into the resume.
 
@@ -270,8 +297,7 @@ Return the complete resume, plus one change entry per edit, with dot paths into 
       },
     ],
   });
-  if (!response.parsed_output) throw new Error("Could not place that — the model returned no structured output.");
-  const filled = response.parsed_output;
+  const filled = parseGapFill(textOf(response, "Could not place that — the model returned no structured output."));
   return { ...filled, changes: dropNoOpChanges(filled.changes) };
 }
 
