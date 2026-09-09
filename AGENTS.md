@@ -35,3 +35,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The saved resume (`src/lib/storage.ts`) is browser-local and read through `useSyncExternalStore`.
   Do not read localStorage during render (no value on the server) or setState from an effect to
   restore it (cascading renders, and the lint rule rejects it).
+- `/api/answer` writes application answers from the tailored resume and the posting only. Every
+  specific must be traceable to the resume; where it is silent the answer says so rather than
+  inventing. It streams over the shared NDJSON helper (`src/lib/ndjson.ts`).

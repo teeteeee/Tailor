@@ -40,6 +40,7 @@ total time instead of the two adding up.
 | Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
 | Tailor | `POST /api/tailor` | yes ×2 | Analyses the posting and tailors the resume, concurrently, streaming progress |
 | Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
+| Answer | `POST /api/answer` | yes | An application question → an answer from the resume and posting, streamed |
 
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
 and `POST /api/export` renders PDF (via `pdfkit`), `.docx` (via `docx`), Markdown, or plain text —
@@ -110,6 +111,19 @@ it changes what gets read first without touching the candidate's words.
 Edits that turn out to change nothing — identical before and after, or a whitespace-only difference —
 are dropped server-side before the change list is returned, so the review list is only things worth
 reviewing.
+
+### Answering application questions
+
+Under the resume preview is a box for the questions application forms ask — "tell us about a time
+you…", "why this role?". Paste one, get an answer written in your voice from **this** tailored resume
+and **this** posting, streamed as it is written, with a copy button and a word and character count
+(forms have limits). Answers stack, so a form with five questions is five pastes.
+
+The honesty rules bind hardest here, because an application answer is a claim you have to stand
+behind in an interview. Every specific — a project, a number, a tool, a length of time — has to be
+traceable to something in the resume. Where the resume is silent, the answer is silent: rather than
+inventing, it says what the question wants that your resume does not show, and what you would need to
+add if it is in fact true of you.
 
 ### Closing a gap
 
@@ -185,8 +199,8 @@ src/
   app/
     page.tsx              the whole flow: input → progress → review
     login/                the password prompt
-    api/                  extract · analyze · tailor · close-gap · cover-letter · export · login
-  components/             ResumePreview, ChangeList, Coverage, Gaps, Dropzone, ScoreRing
+    api/                  extract · tailor · answer · close-gap · cover-letter · export · login
+  components/             ResumePreview, ChangeList, Coverage, Gaps, Answers, Dropzone, ScoreRing
   lib/
     schema.ts             zod schemas — the contract with the model
     claude.ts             the model calls, model selection, and the honesty rules they share
@@ -194,6 +208,7 @@ src/
     apply.ts              accept-reject logic over change paths
     keywords.ts           deterministic ATS-style keyword matching
     diff.ts               word-level diff for the change list
+    ndjson.ts             client-side reader for the streaming routes
     auth.ts               password hashing and constant-time comparison
     export.ts, docx.ts    Markdown / plain text / Word output
 ```

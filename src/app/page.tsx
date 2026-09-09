@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Answers, type Answer } from "@/components/Answers";
 import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
 import { Dropzone } from "@/components/Dropzone";
@@ -8,6 +9,7 @@ import { Gaps, type GapState } from "@/components/Gaps";
 import { ResumePreview } from "@/components/ResumePreview";
 import { ScoreRing } from "@/components/ScoreRing";
 import { applyRejections, mergeChanges } from "@/lib/apply";
+import { postNdjson } from "@/lib/ndjson";
 import { coverageRatio, type KeywordHit } from "@/lib/keywords";
 import {
   describeAge,
@@ -30,51 +32,6 @@ const STAGE_TEXT: Record<Exclude<Stage, "idle">, string> = {
 
 const MIN_RESUME_CHARS = 120;
 const MIN_JOB_CHARS = 80;
-
-/**
- * Read a newline-delimited JSON stream, handing each progress line to
- * onProgress and returning the single result line. Errors arrive inside the
- * stream, because the response headers are long since sent by then.
- */
-async function postStream<T>(
-  url: string,
-  body: unknown,
-  onProgress: (written: number) => void,
-): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok || !response.body) {
-    const data = await response.json().catch(() => null);
-    throw new Error(data?.error ?? `Request to ${url} failed.`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: T | null = null;
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const event = JSON.parse(line) as { type: string; written?: number; error?: string };
-      if (event.type === "progress") onProgress(event.written ?? 0);
-      else if (event.type === "error") throw new Error(event.error ?? "Something went wrong.");
-      else if (event.type === "result") result = event as T;
-    }
-  }
-
-  if (!result) throw new Error("The server closed the connection before finishing.");
-  return result;
-}
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -110,6 +67,10 @@ export default function Home() {
 
   const [letter, setLetter] = useState<string | null>(null);
   const [letterBusy, setLetterBusy] = useState(false);
+
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [streamingAnswer, setStreamingAnswer] = useState<Answer | null>(null);
+  const [answerBusy, setAnswerBusy] = useState(false);
 
   const [gapState, setGapState] = useState<Record<string, GapState>>({});
   const [busyGap, setBusyGap] = useState<string | null>(null);
@@ -164,14 +125,18 @@ export default function Home() {
     try {
       setStage("tailoring");
       setWritten(0);
-      const tailored = await postStream<{ job: Job; result: TailorResult; coverage: Coverages }>(
-        "/api/tailor",
-        { resumeText, jobText },
-        setWritten,
-      );
-      setJob(tailored.job);
-      setResult(tailored.result);
-      setCoverage(tailored.coverage);
+      let tailored: { job: Job; result: TailorResult; coverage: Coverages } | null = null;
+      await postNdjson("/api/tailor", { resumeText, jobText }, (event) => {
+        if (event.type === "progress") setWritten(Number(event.written ?? 0));
+        else if (event.type === "result") {
+          tailored = event as unknown as { job: Job; result: TailorResult; coverage: Coverages };
+        }
+      });
+      if (!tailored) throw new Error("The server closed the connection before finishing.");
+      const { job: analysed, result: tailoredResult, coverage: tailoredCoverage } = tailored;
+      setJob(analysed);
+      setResult(tailoredResult);
+      setCoverage(tailoredCoverage);
       setRejected(new Set());
       setGapState({});
     } catch (cause) {
@@ -252,6 +217,31 @@ export default function Home() {
     }
   }
 
+  /** Answer one application question from the tailored resume and the posting. */
+  async function handleAsk(question: string) {
+    if (!finalResume || !job) return;
+    setAnswerBusy(true);
+    setError(null);
+    setStreamingAnswer({ question: question.trim(), text: "" });
+    try {
+      let text = "";
+      await postNdjson("/api/answer", { resume: finalResume, job, question }, (event) => {
+        if (event.type === "delta") {
+          text += String(event.text ?? "");
+          setStreamingAnswer({ question: question.trim(), text });
+        } else if (event.type === "result") {
+          text = String(event.answer ?? text);
+        }
+      });
+      setAnswers((previous) => [{ question: question.trim(), text }, ...previous]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not answer that.");
+    } finally {
+      setStreamingAnswer(null);
+      setAnswerBusy(false);
+    }
+  }
+
   function reset() {
     setResult(null);
     setCoverage(null);
@@ -259,6 +249,8 @@ export default function Home() {
     setLetter(null);
     setRejected(new Set());
     setGapState({});
+    setAnswers([]);
+    setStreamingAnswer(null);
     setError(null);
   }
 
@@ -361,7 +353,10 @@ export default function Home() {
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_24rem]">
-          <div>{finalResume ? <ResumePreview resume={finalResume} /> : null}</div>
+          <div>
+            {finalResume ? <ResumePreview resume={finalResume} /> : null}
+            <Answers answers={answers} streaming={streamingAnswer} busy={answerBusy} onAsk={handleAsk} />
+          </div>
 
           <aside className="no-print space-y-5">
             <section className="rounded-xl border border-line bg-surface p-4">

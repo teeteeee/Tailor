@@ -274,3 +274,74 @@ Return the complete resume, plus one change entry per edit, with dot paths into 
   const filled = response.parsed_output;
   return { ...filled, changes: dropNoOpChanges(filled.changes) };
 }
+
+/**
+ * Answer a question from a job application in the candidate's voice.
+ *
+ * Grounded in the tailored resume and the posting, and streamed, because an
+ * answer the user is waiting to paste should start appearing immediately.
+ */
+export async function answerQuestion(
+  resume: Resume,
+  job: Job,
+  question: string,
+  onDelta: (text: string) => void,
+): Promise<string> {
+  const client = getClient();
+  const stream = client.messages.stream({
+    model: MODEL,
+    max_tokens: 2000,
+    ...(SUPPORTS_EFFORT ? { output_config: { effort: "medium" as const } } : {}),
+    system: [
+      {
+        type: "text",
+        text: `You are helping a candidate answer a question on a job application. Write the answer
+they will paste into the form, in their voice, first person.
+
+${HONESTY_RULES}
+
+Those rules bind here more tightly than anywhere else, because an application answer is a claim the
+candidate has to stand behind in an interview. Every specific in your answer — a project, a number,
+a tool, a length of time — must be traceable to something in the resume below. Where the resume is
+silent, the answer is silent.
+
+If the resume does not support an answer at all, do not manufacture one. Say briefly what the
+question is asking for that the resume does not show, and what the candidate would need to add if
+it is in fact true of them. That is more useful than a confident invention.
+
+How to write it:
+- Answer the question that was actually asked, from the first sentence. No preamble, no restating
+  the question, no "I am excited to".
+- For a "tell me about a time" question, give one concrete example from the resume: the situation,
+  what they did, and how it turned out.
+- For a motivation question, connect real experience to what this posting actually needs. Avoid
+  flattery about the company that the candidate has no basis for.
+- Around 120-200 words unless the question clearly calls for more or less.
+- Plain prose, ready to paste: no markdown, no headings, no bullet points unless the question asks
+  for a list.`,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `<resume>\n${JSON.stringify(resume, null, 2)}\n</resume>\n\n<job>\n${JSON.stringify(job, null, 2)}\n</job>`,
+            cache_control: { type: "ephemeral" },
+          },
+          { type: "text", text: `The application asks:\n\n${question.trim()}` },
+        ],
+      },
+    ],
+  });
+
+  stream.on("text", (delta) => onDelta(delta));
+  const message = await stream.finalMessage();
+  return message.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+}
