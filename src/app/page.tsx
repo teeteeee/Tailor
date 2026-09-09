@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
 import { Dropzone } from "@/components/Dropzone";
@@ -9,6 +9,15 @@ import { ResumePreview } from "@/components/ResumePreview";
 import { ScoreRing } from "@/components/ScoreRing";
 import { applyRejections, mergeChanges } from "@/lib/apply";
 import { coverageRatio, type KeywordHit } from "@/lib/keywords";
+import {
+  describeAge,
+  forgetResume,
+  getResumeSnapshot,
+  getServerResumeSnapshot,
+  parseResumeSnapshot,
+  saveResume,
+  subscribeResume,
+} from "@/lib/storage";
 import type { Change, Job, Resume, TailorResult } from "@/lib/schema";
 
 type Coverages = { before: KeywordHit[]; after: KeywordHit[] };
@@ -79,9 +88,17 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export default function Home() {
-  const [resumeText, setResumeText] = useState("");
-  const [filename, setFilename] = useState<string | null>(null);
+  // `draft` is what the user has typed or uploaded this session; until they
+  // touch anything it is null and the saved resume shows through.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [draftFilename, setDraftFilename] = useState<string | null>(null);
   const [jobText, setJobText] = useState("");
+
+  const rawSaved = useSyncExternalStore(subscribeResume, getResumeSnapshot, getServerResumeSnapshot);
+  const saved = useMemo(() => parseResumeSnapshot(rawSaved), [rawSaved]);
+
+  const resumeText = draft ?? saved?.text ?? "";
+  const filename = draft === null ? saved?.filename || null : draftFilename;
   const [stage, setStage] = useState<Stage>("idle");
   const [written, setWritten] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +116,22 @@ export default function Home() {
 
   const busy = stage !== "idle";
 
+  // Keep the stored copy in step with the box, so a pasted resume is remembered
+  // as readily as an uploaded one. Writing to storage is an external-system
+  // update, which is what an effect is for; the store notifies React itself.
+  useEffect(() => {
+    if (draft === null || draft.trim().length < MIN_RESUME_CHARS) return;
+    if (saved?.text === draft && (saved?.filename || "") === (draftFilename ?? "")) return;
+    const timer = setTimeout(() => saveResume(draft, draftFilename ?? ""), 800);
+    return () => clearTimeout(timer);
+  }, [draft, draftFilename, saved]);
+
+  function handleForget() {
+    forgetResume();
+    setDraft("");
+    setDraftFilename(null);
+  }
+
   /** What the user actually gets: the tailored resume minus rejected changes. */
   const finalResume: Resume | null = useMemo(
     () => (result ? applyRejections(result.resume, result.changes, rejected) : null),
@@ -107,7 +140,8 @@ export default function Home() {
 
   async function handleFile(file: File) {
     setError(null);
-    setFilename(file.name);
+    setDraftFilename(file.name);
+    setDraft((current) => current ?? "");
     setStage("reading");
     try {
       const form = new FormData();
@@ -115,9 +149,9 @@ export default function Home() {
       const response = await fetch("/api/extract", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error ?? "Could not read that file.");
-      setResumeText(data.text as string);
+      setDraft(data.text as string);
     } catch (cause) {
-      setFilename(null);
+      setDraftFilename(null);
       setError(cause instanceof Error ? cause.message : "Could not read that file.");
     } finally {
       setStage("idle");
@@ -266,14 +300,27 @@ export default function Home() {
         <div className="no-print grid gap-6 lg:grid-cols-2">
           <section className="rounded-xl border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold tracking-wide uppercase">1 · Your resume</h2>
+
+            {saved ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-good-soft px-3 py-2 text-[12.5px] text-good">
+                <span>
+                  Using your saved resume
+                  {saved.filename ? ` (${saved.filename})` : ""} · kept {describeAge(saved.savedAt)}
+                </span>
+                <button type="button" onClick={handleForget} className="underline underline-offset-2 hover:opacity-80">
+                  Forget it
+                </button>
+              </div>
+            ) : null}
+
             <div className="mt-4">
               <Dropzone onFile={handleFile} filename={filename} busy={busy} />
             </div>
             <textarea
               value={resumeText}
               onChange={(event) => {
-                setResumeText(event.target.value);
-                setFilename(null);
+                setDraft(event.target.value);
+                setDraftFilename(null);
               }}
               placeholder="…or paste your resume text here."
               className="mt-4 max-h-[26rem] min-h-[16rem] w-full resize-y rounded-md border border-line bg-surface-2 p-3 font-mono text-xs leading-relaxed outline-none focus:border-accent"

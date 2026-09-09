@@ -85,6 +85,21 @@ Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a
 match of the posting's keywords against the resume text, before and after tailoring, because that is
 what an applicant tracking system actually does. The chips show where each keyword was found.
 
+### Your resume is remembered
+
+Upload or paste once and it comes back on every later visit — the box is prefilled and a bar says
+which resume it is and when it was kept. **Forget it** clears both the box and the stored copy.
+
+It lives in that browser's `localStorage` and nowhere else: it is never written to the server, and
+the only time it leaves the machine is inside the tailoring request itself. That also sets the
+limit — it is **per-browser**, so a different machine, a different browser, or clearing site data
+means uploading again. Persisting it server-side would mean provisioning a database, since a
+serverless filesystem does not survive between requests, and that is a lot of machinery for a
+single-user convenience.
+
+React reads it through `useSyncExternalStore` rather than an effect, because `localStorage` does not
+exist during server rendering. A `storage` listener keeps two open tabs in agreement.
+
 ### Restraint
 
 Tailoring edits by exception. Leaving a bullet exactly as written is the normal outcome; a rewrite
@@ -220,4 +235,5 @@ want a `.docx`.
 ## Known limits
 
 - **Scanned PDFs** have no text layer and there is no OCR — paste the text instead.
-- Nothing is stored. Reloading the page loses the session.
+- Only the resume is stored, in your browser. The tailored result, the change list and the job
+  posting are not — reloading after a run loses them.

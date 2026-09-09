@@ -32,3 +32,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The PDF (`src/lib/pdf.ts`) is drawn with pdfkit, never a headless browser — no Chromium on
   serverless. Keep it single-column and keep letter-spacing off the headings: `pdf.test.ts` extracts
   the text back out and asserts an ATS would read them intact.
+- The saved resume (`src/lib/storage.ts`) is browser-local and read through `useSyncExternalStore`.
+  Do not read localStorage during render (no value on the server) or setState from an effect to
+  restore it (cascading renders, and the lint rule rejects it).
