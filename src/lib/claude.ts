@@ -141,15 +141,23 @@ export async function analyzeJob(jobText: string): Promise<Job> {
 }
 
 /**
- * Parse and tailor in a single call.
+ * Parse and tailor in a single call, streaming so the caller can report
+ * progress rather than showing a dead spinner for half a minute.
+ *
+ * Takes the posting as raw text rather than the structured Job, so this does
+ * not wait on analyzeJob — the two calls run concurrently.
  *
  * The system prompt and the resume are cached, in that order, so tailoring the
  * same resume against a second posting re-reads both from cache — the common
  * case is one resume against many jobs.
  */
-export async function tailorResume(resumeText: string, job: Job): Promise<TailorResult> {
+export async function tailorResume(
+  resumeText: string,
+  jobText: string,
+  onProgress?: (charactersWritten: number) => void,
+): Promise<TailorResult> {
   const client = getClient();
-  const response = await client.messages.parse({
+  const stream = client.messages.stream({
     model: MODEL,
     max_tokens: 16000,
     output_config: outputConfig(zodOutputFormat(TailorResultSchema), "medium"),
@@ -158,18 +166,20 @@ export async function tailorResume(resumeText: string, job: Job): Promise<Tailor
       {
         role: "user",
         content: [
-          {
-            type: "text",
-            text: `<resume>\n${resumeText}\n</resume>`,
-            cache_control: { type: "ephemeral" },
-          },
-          { type: "text", text: `<job>\n${JSON.stringify(job, null, 2)}\n</job>\n\nTailor the resume for this posting.` },
+          { type: "text", text: `<resume>\n${resumeText}\n</resume>`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: `<posting>\n${jobText}\n</posting>\n\nTailor the resume for this posting.` },
         ],
       },
     ],
   });
-  if (!response.parsed_output) throw new Error("Tailoring failed — the model returned no structured output.");
-  return response.parsed_output;
+
+  // Reporting how much has been written keeps the connection alive on hosts
+  // that time out idle responses, and gives the UI something true to show.
+  if (onProgress) stream.on("text", (_delta, snapshot) => onProgress(snapshot.length));
+
+  const message = await stream.finalMessage();
+  if (!message.parsed_output) throw new Error("Tailoring failed — the model returned no structured output.");
+  return message.parsed_output;
 }
 
 export async function writeCoverLetter(resume: Resume, job: Job, notes: string): Promise<string> {

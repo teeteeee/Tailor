@@ -23,3 +23,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Closing a gap (`/api/close-gap`) is the only path that adds unseen content, and only from the
   candidate's own words. The model rewords what they wrote and nothing else; unsupported evidence
   must change nothing and return a reason. Never let a gap be added on a click alone.
+- `/api/tailor` streams newline-delimited JSON (progress lines, then one result line) and runs
+  analyzeJob and tailorResume concurrently. Errors after the first byte must travel inside the
+  stream as an `error` line — use `describeError()` so the wording matches `errorResponse()`.

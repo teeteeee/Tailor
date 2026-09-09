@@ -12,16 +12,60 @@ import { coverageRatio, type KeywordHit } from "@/lib/keywords";
 import type { Change, Job, Resume, TailorResult } from "@/lib/schema";
 
 type Coverages = { before: KeywordHit[]; after: KeywordHit[] };
-type Stage = "idle" | "reading" | "analyzing" | "tailoring";
+type Stage = "idle" | "reading" | "tailoring";
 
 const STAGE_TEXT: Record<Exclude<Stage, "idle">, string> = {
   reading: "Reading your resume…",
-  analyzing: "Breaking down the posting…",
   tailoring: "Tailoring, bullet by bullet…",
 };
 
 const MIN_RESUME_CHARS = 120;
 const MIN_JOB_CHARS = 80;
+
+/**
+ * Read a newline-delimited JSON stream, handing each progress line to
+ * onProgress and returning the single result line. Errors arrive inside the
+ * stream, because the response headers are long since sent by then.
+ */
+async function postStream<T>(
+  url: string,
+  body: unknown,
+  onProgress: (written: number) => void,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error ?? `Request to ${url} failed.`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: T | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as { type: string; written?: number; error?: string };
+      if (event.type === "progress") onProgress(event.written ?? 0);
+      else if (event.type === "error") throw new Error(event.error ?? "Something went wrong.");
+      else if (event.type === "result") result = event as T;
+    }
+  }
+
+  if (!result) throw new Error("The server closed the connection before finishing.");
+  return result;
+}
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -39,6 +83,7 @@ export default function Home() {
   const [filename, setFilename] = useState<string | null>(null);
   const [jobText, setJobText] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
+  const [written, setWritten] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -83,15 +128,14 @@ export default function Home() {
     setError(null);
     setLetter(null);
     try {
-      setStage("analyzing");
-      const analyzed = await postJson<{ job: Job }>("/api/analyze", { text: jobText });
-      setJob(analyzed.job);
-
       setStage("tailoring");
-      const tailored = await postJson<{ result: TailorResult; coverage: Coverages }>("/api/tailor", {
-        resumeText,
-        job: analyzed.job,
-      });
+      setWritten(0);
+      const tailored = await postStream<{ job: Job; result: TailorResult; coverage: Coverages }>(
+        "/api/tailor",
+        { resumeText, jobText },
+        setWritten,
+      );
+      setJob(tailored.job);
       setResult(tailored.result);
       setCoverage(tailored.coverage);
       setRejected(new Set());
@@ -254,9 +298,17 @@ export default function Home() {
               {busy ? STAGE_TEXT[stage as Exclude<Stage, "idle">] : "Tailor my resume"}
             </button>
             {busy ? (
-              <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-2">
-                <div className="h-full w-1/3 animate-pulse rounded-full bg-accent" />
-              </div>
+              <>
+                <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-500"
+                    style={{ width: `${Math.min(95, 6 + (written / 4500) * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-center text-xs text-muted">
+                  {written > 0 ? `${written.toLocaleString()} characters written` : "Reading the posting…"}
+                </p>
+              </>
             ) : null}
           </section>
         </div>

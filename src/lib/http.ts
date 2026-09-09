@@ -3,52 +3,58 @@ import { NextResponse } from "next/server";
 import { BadApiKeyError, MissingApiKeyError } from "./claude";
 import { UnsupportedFileError } from "./extract";
 
-/** Turn a thrown error into a response the UI can show verbatim. */
-export function errorResponse(error: unknown): NextResponse {
+/**
+ * Map a thrown error to the message and status the UI should see. Split out
+ * from errorResponse so streaming routes, which have already sent headers and
+ * must report failures inside the stream, use exactly the same wording.
+ */
+export function describeError(error: unknown): { message: string; status: number } {
   if (error instanceof MissingApiKeyError) {
-    return NextResponse.json(
-      {
-        error:
-          "No Anthropic API key on the server. Put ANTHROPIC_API_KEY in .env.local at the project root, " +
-          "then restart the dev server — env files are only read at startup.",
-      },
-      { status: 503 },
-    );
+    return {
+      message:
+        "No Anthropic API key on the server. Put ANTHROPIC_API_KEY in .env.local at the project root, " +
+        "then restart the dev server — env files are only read at startup.",
+      status: 503,
+    };
   }
 
   if (error instanceof BadApiKeyError) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    return { message: error.message, status: 503 };
   }
 
   if (error instanceof Anthropic.AuthenticationError) {
-    return NextResponse.json(
-      {
-        error:
-          "Anthropic rejected the API key. It is the right shape, so it has most likely been revoked, " +
-          "belongs to a different organisation, or was edited after you copied it. Generate a fresh key at " +
-          "console.anthropic.com/settings/keys, put it in .env.local, and restart the dev server.",
-      },
-      { status: 401 },
-    );
+    return {
+      message:
+        "Anthropic rejected the API key. It is the right shape, so it has most likely been revoked, " +
+        "belongs to a different organisation, or was edited after you copied it. Generate a fresh key at " +
+        "console.anthropic.com/settings/keys, put it in .env.local, and restart the dev server.",
+      status: 401,
+    };
   }
 
   if (error instanceof Anthropic.PermissionDeniedError) {
-    return NextResponse.json(
-      { error: "That API key is valid but not permitted to use this model. Check the key's workspace and permissions." },
-      { status: 403 },
-    );
+    return {
+      message: "That API key is valid but not permitted to use this model. Check the key's workspace and permissions.",
+      status: 403,
+    };
   }
 
   if (error instanceof Anthropic.RateLimitError) {
-    return NextResponse.json({ error: "Anthropic is rate limiting this key. Wait a moment and try again." }, { status: 429 });
+    return { message: "Anthropic is rate limiting this key. Wait a moment and try again.", status: 429 };
   }
 
   if (error instanceof UnsupportedFileError) {
-    return NextResponse.json({ error: error.message }, { status: 415 });
+    return { message: error.message, status: 415 };
   }
 
   const message = error instanceof Error ? error.message : "Something went wrong.";
-  const status = typeof (error as { status?: number })?.status === "number" ? (error as { status: number }).status : 500;
+  const raw = typeof (error as { status?: number })?.status === "number" ? (error as { status: number }).status : 500;
   console.error("[resume-tailor]", error);
-  return NextResponse.json({ error: message }, { status: status >= 400 && status < 600 ? status : 500 });
+  return { message, status: raw >= 400 && raw < 600 ? raw : 500 };
+}
+
+/** Turn a thrown error into a response the UI can show verbatim. */
+export function errorResponse(error: unknown): NextResponse {
+  const { message, status } = describeError(error);
+  return NextResponse.json({ error: message }, { status });
 }

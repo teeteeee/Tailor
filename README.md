@@ -31,18 +31,35 @@ npm run typecheck
 ## How it works
 
 Two model calls, each returning schema-validated JSON via the Anthropic SDK's structured outputs
-(`output_config.format` + `zodOutputFormat`):
+(`output_config.format` + `zodOutputFormat`). They run **at the same time**: tailoring reads the
+posting text directly rather than waiting for the structured analysis, so the slower call sets the
+total time instead of the two adding up.
 
 | Step | Route | Model call? | What it does |
 |---|---|---|---|
 | Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
-| Analyse | `POST /api/analyze` | yes | Job posting → requirements, responsibilities, ATS keywords |
-| Tailor | `POST /api/tailor` | yes | Resume text + job → tailored resume, change log, score, gaps |
+| Tailor | `POST /api/tailor` | yes ×2 | Analyses the posting and tailors the resume, concurrently, streaming progress |
 | Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
 
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
 and `POST /api/export` renders `.docx` (via `docx`), Markdown, or plain text — neither export nor
 keyword coverage costs anything.
+
+### Keeping it quick
+
+Most of the wait is the model *writing*: the tailoring call emits the whole resume as JSON plus a
+change log, which for a two-page resume is roughly 2,500 output tokens. Output generation is the slow
+part of any model call, so three things matter:
+
+- **The two calls overlap.** Analysis and tailoring start together; the total is the slower one.
+- **`/api/tailor` streams.** It returns newline-delimited JSON — progress lines while the model
+  writes, then one result line — so the page shows characters accumulating instead of a dead spinner,
+  and the connection never looks idle to a host that times those out.
+- **Uploads and exports cost nothing**, so only the tailoring itself is ever slow.
+
+Roughly 60% of the tailoring output is duplicated text: every rewritten bullet appears once in the
+resume and again as `before`/`after` in the change log. That is the price of a reviewable, revertible
+edit list, and the obvious next optimisation if it needs to be faster still.
 
 ### Keeping the bill small
 
