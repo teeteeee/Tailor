@@ -44,3 +44,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   When editing the tailoring prompt, check every operation it recommends is expressible in
   `ChangeSchema` — telling the model to reorder while `kind` had no such value is what caused a
   crash in the wild.
+- Download names come from `src/lib/filename.ts` (`Name-Company.ext`), chosen server-side and read
+  back by the client from `Content-Disposition` — do not reconstruct the name in the browser. Names
+  normalise as NFC, not NFKD: decomposing splits accents into combining marks and hyphenates
+  "Ramírez" mid-word.

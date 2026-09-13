@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slugify, toMarkdown, toPlainText } from "../export";
+import { toMarkdown, toPlainText } from "../export";
 import { makeResume } from "./fixtures";
 
 describe("toMarkdown", () => {
@@ -22,12 +22,5 @@ describe("toPlainText", () => {
     const text = toPlainText(makeResume());
     expect(text).not.toMatch(/[#*]/);
     expect(text).toContain("• Built an ETL pipeline");
-  });
-});
-
-describe("slugify", () => {
-  it("makes a filename-safe slug", () => {
-    expect(slugify("Ada Lovelace")).toBe("ada-lovelace");
-    expect(slugify("!!!")).toBe("resume");
   });
 });

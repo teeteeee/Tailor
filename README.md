@@ -244,6 +244,17 @@ trailing newline both work.
 
 A 401 is always about the key. An exhausted balance is a different error mentioning credit.
 
+### What the file is called
+
+Downloads are named `Name-Company.ext` — `Titi-Adesola-Northwind.pdf` — taking the name from the
+resume and the company from the posting, so a folder of applications is readable at a glance.
+Capitalisation is kept as written, since this is a document a person receives rather than a URL, and
+punctuation common in company names is tidied (`Acme, Inc.` becomes `Acme-Inc`). Where the posting
+names no company it falls back to `Name-Resume.ext`.
+
+The server names the file and the browser reads that name back off `Content-Disposition`, so there
+is one source of truth rather than two that can drift apart.
+
 ### The PDF
 
 **Download resume** always gives a PDF. It is drawn directly with `pdfkit` rather than by printing

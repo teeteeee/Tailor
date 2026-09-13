@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toDocxBuffer } from "@/lib/docx";
 import { toPdfBuffer } from "@/lib/pdf";
-import { slugify, toMarkdown, toPlainText } from "@/lib/export";
+import { toMarkdown, toPlainText } from "@/lib/export";
+import { resumeFilename } from "@/lib/filename";
 import { ResumeSchema } from "@/lib/schema";
 import { errorResponse } from "@/lib/http";
 
@@ -12,7 +13,7 @@ type Format = (typeof FORMATS)[number];
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { resume?: unknown; format?: string };
+    const body = (await request.json()) as { resume?: unknown; format?: string; company?: string };
     const parsed = ResumeSchema.safeParse(body.resume);
     if (!parsed.success) {
       return NextResponse.json({ error: "Missing or malformed resume data." }, { status: 400 });
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const resume = parsed.data;
-    const filename = `${slugify(resume.contact.name)}-resume.${format}`;
+    const filename = resumeFilename(resume.contact.name, body.company ?? "", format);
     const headers = {
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",

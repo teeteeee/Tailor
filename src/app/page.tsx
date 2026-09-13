@@ -9,6 +9,7 @@ import { Gaps, type GapState } from "@/components/Gaps";
 import { ResumePreview } from "@/components/ResumePreview";
 import { ScoreRing } from "@/components/ScoreRing";
 import { applyRejections, mergeChanges } from "@/lib/apply";
+import { filenameFromHeader } from "@/lib/filename";
 import { postNdjson } from "@/lib/ndjson";
 import { coverageRatio, type KeywordHit } from "@/lib/keywords";
 import {
@@ -153,14 +154,17 @@ export default function Home() {
       const response = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: finalResume, format }),
+        body: JSON.stringify({ resume: finalResume, format, company: job?.company ?? "" }),
       });
       if (!response.ok) throw new Error(((await response.json()) as { error?: string })?.error ?? "Export failed.");
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${(finalResume.contact.name || "resume").toLowerCase().replace(/\s+/g, "-")}-resume.${format}`;
+      // The server already named the file; taking it from the header keeps one
+      // source of truth rather than two that can drift.
+      link.download = filenameFromHeader(response.headers.get("Content-Disposition")) ?? `resume.${format}`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (cause) {

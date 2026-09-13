@@ -69,13 +69,3 @@ export function toPlainText(resume: Resume): string {
     .replace(/\*(.+?)\*/g, "$1")
     .replace(/^- /gm, "• ");
 }
-
-export function slugify(value: string): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 60) || "resume"
-  );
-}
