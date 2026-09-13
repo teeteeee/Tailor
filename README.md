@@ -247,10 +247,11 @@ A 401 is always about the key. An exhausted balance is a different error mention
 ### What the file is called
 
 Downloads are named `Name-Company.ext` — `Titi-Adesola-Northwind.pdf` — taking the name from the
-resume and the company from the posting, so a folder of applications is readable at a glance.
-Capitalisation is kept as written, since this is a document a person receives rather than a URL, and
-punctuation common in company names is tidied (`Acme, Inc.` becomes `Acme-Inc`). Where the posting
-names no company it falls back to `Name-Resume.ext`.
+resume and the company from the posting, so a folder of applications is readable at a glance. Only
+the identifying word of the company is used: "Northwind Logistics, Inc." is `Northwind`, and a
+leading article is skipped, so "The Boston Consulting Group" is `Boston`. Capitalisation is kept as
+written, since this is a document a person receives rather than a URL. Where the posting names no
+company it falls back to `Name-Resume.ext`.
 
 The server names the file and the browser reads that name back off `Content-Disposition`, so there
 is one source of truth rather than two that can drift apart.

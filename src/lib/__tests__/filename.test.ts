@@ -10,14 +10,20 @@ describe("resumeFilename", () => {
     expect(resumeFilename("Ada Lovelace", "Acme", "docx")).toBe("Ada-Lovelace-Acme.docx");
   });
 
-  it("tidies punctuation common in company names", () => {
-    expect(resumeFilename("Titi Adesola", "Acme, Inc.", "pdf")).toBe("Titi-Adesola-Acme-Inc.pdf");
-    expect(resumeFilename("Titi Adesola", "Smith & Sons", "pdf")).toBe("Titi-Adesola-Smith-Sons.pdf");
-    expect(resumeFilename("Titi Adesola", "  Spaced   Out  ", "pdf")).toBe("Titi-Adesola-Spaced-Out.pdf");
+  it("uses only the identifying word of the company", () => {
+    expect(resumeFilename("Titi Adesola", "Northwind Logistics, Inc.", "pdf")).toBe("Titi-Adesola-Northwind.pdf");
+    expect(resumeFilename("Titi Adesola", "Acme, Inc.", "pdf")).toBe("Titi-Adesola-Acme.pdf");
+    expect(resumeFilename("Titi Adesola", "Smith & Sons", "pdf")).toBe("Titi-Adesola-Smith.pdf");
+    expect(resumeFilename("Titi Adesola", "  Spaced   Out  ", "pdf")).toBe("Titi-Adesola-Spaced.pdf");
+  });
+
+  it("skips a leading article, which is not the company's name", () => {
+    expect(resumeFilename("Titi Adesola", "The Boston Consulting Group", "pdf")).toBe("Titi-Adesola-Boston.pdf");
+    expect(resumeFilename("Titi Adesola", "the Guardian", "pdf")).toBe("Titi-Adesola-Guardian.pdf");
   });
 
   it("keeps accented and non-Latin letters rather than stripping the name", () => {
-    expect(resumeFilename("José Ramírez", "Café", "pdf")).toBe("José-Ramírez-Café.pdf");
+    expect(resumeFilename("José Ramírez", "Café Rouge", "pdf")).toBe("José-Ramírez-Café.pdf");
   });
 
   it("falls back to Resume when the posting names no company", () => {
@@ -28,6 +34,10 @@ describe("resumeFilename", () => {
   it("survives a missing or unusable name", () => {
     expect(resumeFilename("", "Northwind", "pdf")).toBe("Resume-Northwind.pdf");
     expect(resumeFilename("!!!", "", "pdf")).toBe("Resume-Resume.pdf");
+  });
+
+  it("handles a company that is only an article", () => {
+    expect(resumeFilename("Titi Adesola", "The", "pdf")).toBe("Titi-Adesola-Resume.pdf");
   });
 
   it("never emits a path separator or a leading dot", () => {

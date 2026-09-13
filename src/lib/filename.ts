@@ -21,9 +21,20 @@ function toFilenamePart(value: string): string {
     .slice(0, 60);
 }
 
+/**
+ * Just the identifying word of the company: "Northwind Logistics, Inc." is
+ * "Northwind". A leading article is skipped, since "The" is plainly not what
+ * anyone means by the company's name.
+ */
+function companyShortName(company: string): string {
+  const words = company.trim().split(/[\s,]+/).filter(Boolean);
+  const first = words[0]?.toLowerCase() === "the" ? words[1] : words[0];
+  return first ?? "";
+}
+
 export function resumeFilename(name: string, company: string, extension: string): string {
   const who = toFilenamePart(name) || "Resume";
-  const where = toFilenamePart(company);
+  const where = toFilenamePart(companyShortName(company));
   return `${where ? `${who}-${where}` : `${who}-Resume`}.${extension}`;
 }
 
