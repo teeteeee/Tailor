@@ -37,9 +37,30 @@ function contains(haystack: string, needle: string): boolean {
   return target.trim().length > 0 && normalize(haystack).includes(target);
 }
 
+/**
+ * Trim, drop blanks, and remove case-insensitive duplicates, keeping the first
+ * spelling seen.
+ *
+ * The schema asks the model for a deduplicated list and it mostly obliges, but
+ * "mostly" is not a guarantee: a repeated keyword renders a duplicate chip and,
+ * because the chips are keyed by keyword, breaks React's reconciliation.
+ */
+export function normalizeKeywords(keywords: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const raw of keywords) {
+    const keyword = raw.trim();
+    const fingerprint = keyword.toLowerCase();
+    if (!keyword || seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    unique.push(keyword);
+  }
+  return unique;
+}
+
 export function keywordCoverage(resume: Resume, keywords: string[]): KeywordHit[] {
   const segments = textSegments(resume);
-  return keywords.map((keyword) => {
+  return normalizeKeywords(keywords).map((keyword) => {
     const locations = [
       ...new Set(segments.filter((segment) => contains(segment.text, keyword)).map((segment) => segment.location)),
     ];
@@ -52,7 +73,7 @@ export function keywordCoverage(resume: Resume, keywords: string[]): KeywordHit[
  * original is never parsed into a Resume, so there are no sections to name.
  */
 export function keywordCoverageInText(text: string, keywords: string[]): KeywordHit[] {
-  return keywords.map((keyword) => ({
+  return normalizeKeywords(keywords).map((keyword) => ({
     keyword,
     present: contains(text, keyword),
     locations: contains(text, keyword) ? ["Resume"] : [],

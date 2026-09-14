@@ -82,6 +82,9 @@ TAILOR_MODEL=claude-sonnet-5    # $2/$10
 TAILOR_MODEL=claude-opus-5      # $5/$25, the strongest rewriting
 ```
 
+The posting's keywords are deduplicated case-insensitively before anything uses them: the schema
+asks for a unique list, but asking is not enforcing, and a repeat rendered the same chip twice.
+
 Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a literal whole-word
 match of the posting's keywords against the resume text, before and after tailoring, because that is
 what an applicant tracking system actually does. The chips show where each keyword was found.

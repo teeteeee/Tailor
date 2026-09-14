@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverageRatio, keywordCoverage, keywordCoverageInText } from "../keywords";
+import { coverageRatio, keywordCoverage, keywordCoverageInText, normalizeKeywords } from "../keywords";
 import { makeResume } from "./fixtures";
 
 describe("keywordCoverage", () => {
@@ -46,5 +46,41 @@ describe("keywordCoverageInText", () => {
 
   it("uses the same whole-word rule as the structured matcher", () => {
     expect(keywordCoverageInText("Worked on Javanese linguistics.", ["Java"])[0].present).toBe(false);
+  });
+});
+
+describe("normalizeKeywords", () => {
+  it("removes exact duplicates, keeping the first", () => {
+    expect(normalizeKeywords(["Intune", "Go", "Intune"])).toEqual(["Intune", "Go"]);
+  });
+
+  it("removes duplicates that differ only in case or spacing", () => {
+    expect(normalizeKeywords(["Intune", "intune", " INTUNE "])).toEqual(["Intune"]);
+  });
+
+  it("drops blanks", () => {
+    expect(normalizeKeywords(["Go", "", "   ", "Kafka"])).toEqual(["Go", "Kafka"]);
+  });
+
+  it("keeps genuinely different keywords that look similar", () => {
+    expect(normalizeKeywords(["Java", "JavaScript"])).toEqual(["Java", "JavaScript"]);
+  });
+
+  it("preserves order", () => {
+    expect(normalizeKeywords(["C", "B", "A", "B"])).toEqual(["C", "B", "A"]);
+  });
+});
+
+describe("coverage with a duplicated keyword list", () => {
+  it("returns one hit per keyword, so chip keys stay unique", () => {
+    const hits = keywordCoverage(makeResume(), ["Python", "python", "Go", "Python"]);
+    expect(hits.map((hit) => hit.keyword)).toEqual(["Python", "Go"]);
+    expect(new Set(hits.map((hit) => hit.keyword)).size).toBe(hits.length);
+  });
+
+  it("does the same for the raw-text variant, so before and after stay aligned", () => {
+    const before = keywordCoverageInText("Ada builds things in Go.", ["Go", "go", "Kafka"]);
+    const after = keywordCoverage(makeResume(), ["Go", "go", "Kafka"]);
+    expect(before.map((hit) => hit.keyword)).toEqual(after.map((hit) => hit.keyword));
   });
 });

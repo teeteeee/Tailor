@@ -5,13 +5,16 @@ export function Coverage({ before, after }: { before: KeywordHit[]; after: Keywo
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {after.map((hit) => {
+      {after.map((hit, index) => {
         const wasPresent = beforeMap.get(hit.keyword) ?? false;
         const isNew = hit.present && !wasPresent;
         const title = hit.present ? `Found in: ${hit.locations.join(", ")}` : "Not found in the tailored resume";
         return (
           <span
-            key={hit.keyword}
+            // Keywords are deduplicated in keywordCoverage, so the keyword
+            // alone would do; the index keeps this safe if a duplicate ever
+            // reaches the component by another route.
+            key={`${hit.keyword}-${index}`}
             title={title}
             className={`rounded-full border px-2 py-0.5 text-[11px] ${
               hit.present

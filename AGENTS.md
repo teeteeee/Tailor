@@ -48,3 +48,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   back by the client from `Content-Disposition` — do not reconstruct the name in the browser. Names
   normalise as NFC, not NFKD: decomposing splits accents into combining marks and hyphenates
   "Ramírez" mid-word.
+- Job keywords are deduplicated by `normalizeKeywords()` in `src/lib/keywords.ts`, applied both in
+  `analyzeJob` and inside the coverage functions. The schema asks the model for a unique list but
+  does not enforce one, and a repeat rendered a duplicate chip and broke React's keying.

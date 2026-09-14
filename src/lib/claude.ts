@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { dropNoOpChanges } from "./apply";
+import { normalizeKeywords } from "./keywords";
 import { parseGapFill, parseTailorResult } from "./parse";
 import {
   GapFillSchema,
@@ -183,7 +184,8 @@ export async function analyzeJob(jobText: string): Promise<Job> {
     messages: [{ role: "user", content: `Analyse this job posting:\n\n<posting>\n${jobText}\n</posting>` }],
   });
   if (!response.parsed_output) throw new Error("Could not read that job posting — the model returned no structured output.");
-  return response.parsed_output;
+  const job = response.parsed_output;
+  return { ...job, keywords: normalizeKeywords(job.keywords) };
 }
 
 /**
