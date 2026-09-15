@@ -76,4 +76,28 @@ export async function migrate(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS runs_user_created ON runs (user_id, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS sessions_expires ON sessions (expires_at)`;
+
+  // On Supabase the public schema is published through PostgREST using a key
+  // that is meant to be public, and these tables hold password hashes, session
+  // tokens and people's resumes. The app reaches them over a direct Postgres
+  // connection and never through that API, so row-level security with no
+  // policies is exactly right: it denies the API roles outright, while the
+  // owning role the app connects as bypasses RLS and is unaffected.
+  await sql`ALTER TABLE users ENABLE ROW LEVEL SECURITY`;
+  await sql`ALTER TABLE sessions ENABLE ROW LEVEL SECURITY`;
+  await sql`ALTER TABLE runs ENABLE ROW LEVEL SECURITY`;
+
+  // Those roles exist only on Supabase, hence the guard: plain Postgres has
+  // neither, and an unguarded REVOKE would fail the migration there.
+  await sql`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON TABLE users, sessions, runs FROM anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON TABLE users, sessions, runs FROM authenticated;
+      END IF;
+    END $$
+  `;
 }
