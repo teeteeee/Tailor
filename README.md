@@ -1,1 +1,341 @@
-# Tailor
+# Resume Tailor
+
+Paste a resume and a job posting; get back a rewritten resume aimed at that posting, a
+reviewable list of every change, and an honest account of what the posting asks for that the
+resume does not evidence.
+
+The rule the whole app is built around: **tailoring changes how true things are presented, never
+what is true.** The model may reframe, reorder, merge and re-emphasise existing content. It may not
+invent an employer, a date, a degree, a tool, or a metric. Anything genuinely missing shows up under
+"Genuine gaps" instead of quietly appearing in the resume.
+
+## Running it
+
+```bash
+npm install
+cp .env.example .env.local     # then put a real key in it
+npm run dev                    # http://localhost:3000
+```
+
+`ANTHROPIC_API_KEY` is read server-side only — the key never reaches the browser. Uploading a resume
+and every export work without a key; only the analyse and tailor steps need one, and without it the
+app says so plainly rather than failing obscurely.
+
+```bash
+npm test        # unit tests (vitest)
+npm run build   # production build
+npm run lint
+npm run typecheck
+```
+
+## How it works
+
+Two model calls, each returning schema-validated JSON via the Anthropic SDK's structured outputs
+(`output_config.format` + `zodOutputFormat`). They run **at the same time**: tailoring reads the
+posting text directly rather than waiting for the structured analysis, so the slower call sets the
+total time instead of the two adding up.
+
+| Step | Route | Model call? | What it does |
+|---|---|---|---|
+| Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
+| Fetch posting | `POST /api/fetch-job` | no | A posting's link → its readable text, put in the box to check |
+| Tailor | `POST /api/tailor` | yes ×2 | Analyses the posting and tailors the resume, concurrently, streaming progress |
+| Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
+| Answer | `POST /api/answer` | yes | An application question → an answer from the resume and posting, streamed |
+
+Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
+and `POST /api/export` renders PDF (via `pdfkit`), `.docx` (via `docx`), Markdown, or plain text —
+neither export nor keyword coverage costs anything.
+
+### Giving it a link
+
+The posting can be pasted, or given as a URL: the server fetches the page, strips it to readable
+text, and puts that in the box — visible and editable, rather than sent straight to the model.
+
+Fetching a URL that someone else supplies, from inside the deployment, is the classic server-side
+request forgery shape, so `src/lib/fetchJob.ts` refuses anything internal: non-http schemes,
+`localhost`-style names, literal private addresses, and hosts that *resolve* to one. Redirects are
+followed manually and re-checked at each hop, because a public URL redirecting to `169.254.169.254`
+is exactly how that guard gets walked around. Responses are capped at 2 MB and 12 seconds.
+
+Plenty of job boards block automated visits or build the page in the browser. When that happens the
+error says so and tells you to paste instead, rather than failing obscurely.
+
+### Keeping it quick
+
+Most of the wait is the model *writing*: the tailoring call emits the whole resume as JSON plus a
+change log, which for a two-page resume is roughly 2,500 output tokens. Output generation is the slow
+part of any model call, so three things matter:
+
+- **The two calls overlap.** Analysis and tailoring start together; the total is the slower one.
+- **`/api/tailor` streams.** It returns newline-delimited JSON — progress lines while the model
+  writes, then one result line — so the page shows characters accumulating instead of a dead spinner,
+  and the connection never looks idle to a host that times those out.
+- **Uploads and exports cost nothing**, so only the tailoring itself is ever slow.
+
+Roughly 60% of the tailoring output is duplicated text: every rewritten bullet appears once in the
+resume and again as `before`/`after` in the change log. That is the price of a reviewable, revertible
+edit list, and the obvious next optimisation if it needs to be faster still.
+
+### Keeping the bill small
+
+The default model is **Haiku 4.5** ($1/$5 per million input/output tokens). This is bounded
+rewriting against a schema rather than open reasoning, so the cheap model does it well. Three other
+choices pull in the same direction:
+
+- **Reading and tailoring happen in one call.** The resume is never round-tripped through a separate
+  parse step, which saves a call and stops the resume being sent twice.
+- **Thinking is off** and effort is low — on Haiku there is no `effort` parameter at all, and the app
+  omits it rather than sending one the model rejects.
+- **The system prompt and the resume are cached.** Tailoring the same resume against a second
+  posting re-reads both from cache, so the marginal application is cheaper than the first.
+
+Set `TAILOR_MODEL` to trade money for better prose:
+
+```bash
+TAILOR_MODEL=claude-sonnet-5    # $2/$10
+TAILOR_MODEL=claude-opus-5      # $5/$25, the strongest rewriting
+```
+
+The posting's keywords are deduplicated case-insensitively before anything uses them: the schema
+asks for a unique list, but asking is not enforcing, and a repeat rendered the same chip twice.
+
+Keyword coverage is **not** the model's opinion — `src/lib/keywords.ts` does a literal whole-word
+match of the posting's keywords against the resume text, before and after tailoring, because that is
+what an applicant tracking system actually does. The chips show where each keyword was found.
+
+### Your resume is remembered
+
+Upload or paste once and it comes back on every later visit — the box is prefilled and a bar says
+which resume it is and when it was kept. **Forget it** clears both the box and the stored copy.
+
+It lives in that browser's `localStorage` and nowhere else: it is never written to the server, and
+the only time it leaves the machine is inside the tailoring request itself. That also sets the
+limit — it is **per-browser**, so a different machine, a different browser, or clearing site data
+means uploading again. Persisting it server-side would mean provisioning a database, since a
+serverless filesystem does not survive between requests, and that is a lot of machinery for a
+single-user convenience.
+
+React reads it through `useSyncExternalStore` rather than an effect, because `localStorage` does not
+exist during server rendering. A `storage` listener keeps two open tabs in agreement.
+
+### When the model goes off-schema
+
+Structured outputs guide generation but do not guarantee it, so `src/lib/parse.ts` validates the
+change list entry by entry rather than as a whole. Losing one entry from the review list is a far
+smaller failure than losing a resume that took half a minute to write.
+
+An unrecognised `kind` is repaired rather than discarded — such an entry still carries its path and
+its before and after text, which is everything accepting or rejecting it needs. Only entries too
+broken to repair are dropped, with a server-side warning. A malformed **resume** still fails loudly:
+that is not something to paper over.
+
+### Restraint
+
+Tailoring edits by exception. Leaving a bullet exactly as written is the normal outcome; a rewrite
+has to be justified by a specific requirement in the posting, and every entry in the change list
+names the requirement it serves. Reordering is preferred over rewriting where it does the job, since
+it changes what gets read first without touching the candidate's words.
+
+Edits that turn out to change nothing — identical before and after, or a whitespace-only difference —
+are dropped server-side before the change list is returned, so the review list is only things worth
+reviewing.
+
+### Answering application questions
+
+Under the resume preview is a box for the questions application forms ask — "tell us about a time
+you…", "why this role?". Paste one, get an answer written in your voice from **this** tailored resume
+and **this** posting, streamed as it is written, with a copy button and a word and character count
+(forms have limits). Answers stack, so a form with five questions is five pastes.
+
+The honesty rules bind hardest here, because an application answer is a claim you have to stand
+behind in an interview. Every specific — a project, a number, a tool, a length of time — has to be
+traceable to something in the resume. Where the resume is silent, the answer is silent: rather than
+inventing, it says what the question wants that your resume does not show, and what you would need to
+add if it is in fact true of you.
+
+### Closing a gap
+
+Gaps are clickable, because a gap is often something you did and never wrote down rather than
+something you have never done. Clicking one asks what you actually did; `POST /api/close-gap` then
+places your own words into the right section — a bullet on the role, or an entry in a skill group.
+
+The model is held to what you wrote: it rewords it into resume voice and does nothing else — no
+added metric, no inferred adjacent skill. If what you say doesn't actually evidence the gap, it
+changes nothing and tells you why. The result arrives as ordinary change entries, so a closed gap is
+reviewable and revertible like everything else.
+
+This is the only path that adds something the resume did not already say, and it works precisely
+because the evidence comes from you. Clicking a gap to have it written for you would be the one
+thing this app refuses to do.
+
+### Reviewing changes
+
+The model returns the full tailored resume plus a `changes[]` log, where each entry carries a dot
+path into the resume (`experience.0.bullets.2`), the text before, the text after, and why. Every
+change starts accepted; unticking one reverts exactly that path (`src/lib/applyRejections`), so the
+preview and every export always reflect what you actually approved. Small edits render as a
+word-level diff; near-total rewrites render as before/after, which is easier to read.
+
+## Deploying it
+
+**GitHub Pages will not work.** Pages serves static files, and this app needs a server: the API key
+lives in server-side routes and must never reach the browser. A static build would mean shipping the
+key to every visitor.
+
+Vercel is the path of least resistance — same people who make Next.js, and it deploys from the
+GitHub repo on every push.
+
+1. Push this branch to GitHub (already done if you're reading this there).
+2. At [vercel.com/new](https://vercel.com/new), import the repository. Everything auto-detects; no
+   build settings to change.
+3. Add the environment variables under **Settings → Environment Variables**:
+
+   | Variable | Required | Notes |
+   |---|---|---|
+   | `ANTHROPIC_API_KEY` | yes | Nothing can be tailored without it |
+   | `APP_PASSWORD` | one of these two | The password the site asks for. Make it long |
+   | `APP_PUBLIC` | one of these two | `true` opens the site to anyone with the link — see below |
+   | `TAILOR_MODEL` | no | Defaults to `claude-haiku-4-5` |
+
+4. Deploy. Redeploy after changing an environment variable — they are read at boot.
+
+Set the variables **before** the first deploy if you can. A deployment with neither `APP_PASSWORD`
+nor `APP_PUBLIC` is closed rather than open, so nothing is exposed either way, but the site returns
+503 until you set one.
+
+### The password gate
+
+A public URL wired to a billable API key is somebody else's free API. So `src/proxy.ts` sits in front
+of everything:
+
+- No session → HTML routes redirect to `/login`, API routes return `401` JSON rather than a login
+  page, so an expired session mid-use reads as an error and not as garbled output.
+- The cookie holds an HMAC of the password, not the password, and is `httpOnly`, `sameSite=lax`, and
+  `secure` in production. A stolen cookie can't be turned back into the password.
+- Wrong-password responses are delayed half a second, which makes brute forcing slow and noisy.
+- **`APP_PASSWORD` unset in production closes the site entirely** (503). Forgetting an environment
+  variable should not silently publish an open door. Locally it stays open so development needs no
+  setup.
+
+It is one shared password, not user accounts — right for something you use yourself or share with a
+few people, not for a public service.
+
+### Opening it to everyone
+
+`APP_PUBLIC=true` removes the gate: anyone with the link can use the app, with no password and no
+rate limit. Two things follow from that, and neither is hypothetical:
+
+- **Every run spends your API credits**, roughly five cents each. A link that leaks, or a bot that
+  finds it, spends them at whatever rate it likes. There is no cap.
+- **Resumes people paste in reach Anthropic under your account**, not theirs.
+
+`APP_PUBLIC` is deliberately a separate setting from an absent password, so that *forgetting* to
+configure access still closes the site. Opening it has to be a decision someone made on purpose.
+
+## Accounts and history
+
+Set `DATABASE_URL` to any Postgres connection string and the app grows accounts and a history page.
+Use the **pooled** connection string — on Supabase the Transaction pooler (port 6543), on Neon the
+pooled endpoint — because serverless opens and drops connections constantly and would exhaust a
+direct database.
+Without it nothing changes: no accounts, no history, and access stays on the shared password or
+`APP_PUBLIC`. Existing deployments are not forced to migrate.
+
+With a database:
+
+- People sign up with an email and password, which replaces the shared gate — each person sees only
+  their own work. Passwords are stored as salted scrypt hashes, sessions live in the database behind
+  an httpOnly cookie, and a wrong password takes the same time as an unknown account so the login
+  cannot be used to discover who has registered.
+- Every tailoring run is saved. `/history` lists them newest first, with search over company and job
+  title, a date filter, and a pin that floats the ones worth keeping to the top. Deleting a run
+  removes it; deleting an account takes its runs with it.
+- Opening a past run restores it — resume, changes, gaps, answers — including which changes you had
+  rejected, because the stored copy is kept in step as you work rather than frozen at the moment the
+  model finished.
+
+The schema is created on demand by `migrate()`, which is idempotent and runs on the paths that need
+it, so there is no separate migration step to remember on a serverless deployment.
+
+**What this means for privacy:** with a database the app stores resumes on your server. Without one
+it stores nothing at all. That is a real change in what you are responsible for, particularly on a
+public deployment where the resumes are other people's.
+
+## Layout
+
+```
+src/
+  proxy.ts                the password gate, in front of every route
+  app/
+    page.tsx              the whole flow: input → progress → review
+    login/                the password prompt
+    api/                  extract · tailor · answer · close-gap · cover-letter · export · login
+  components/             ResumePreview, ChangeList, Coverage, Gaps, Answers, Dropzone, ScoreRing
+  lib/
+    db.ts                 Postgres pool and the schema
+    accounts.ts           sign-up, sign-in, sessions, password hashing
+    runs.ts               saved runs: list, search, pin, delete
+    session.ts            who is signed in, for pages and routes
+    schema.ts             zod schemas — the contract with the model
+    claude.ts             the model calls, model selection, and the honesty rules they share
+    extract.ts            PDF (unpdf) / DOCX (mammoth) / text
+    apply.ts              accept-reject logic over change paths
+    keywords.ts           deterministic ATS-style keyword matching
+    diff.ts               word-level diff for the change list
+    ndjson.ts             client-side reader for the streaming routes
+    auth.ts               password hashing and constant-time comparison
+    export.ts, docx.ts    Markdown / plain text / Word output
+```
+
+## When it won't authenticate
+
+`.env.local` lives at the project root, beside `package.json`, and is read **once at startup** — after
+editing it, stop the dev server and start it again.
+
+The app checks the key's shape before spending a request, so most mistakes come back naming the
+cause rather than as a bare "API key is invalid":
+
+| What you see | What happened |
+|---|---|
+| "still contains `...`" | The `sk-ant-...` placeholder, or a key copied from the console after it was abbreviated on screen. The console shows a key in full only once — generate a fresh one |
+| "doesn't start with `sk-ant-`" | Not an API key. It needs to come from console.anthropic.com/settings/keys |
+| "only N characters" | The paste was truncated |
+| "Anthropic rejected the API key" | The shape is right, so the key itself is revoked, from another organisation, or edited after copying |
+
+Wrapping quotes and trailing whitespace are stripped automatically, so `KEY="sk-ant-..."` and a
+trailing newline both work.
+
+A 401 is always about the key. An exhausted balance is a different error mentioning credit.
+
+### What the file is called
+
+Downloads are named `Name-Company.ext` — `Titi-Adesola-Northwind.pdf` — taking the name from the
+resume and the company from the posting, so a folder of applications is readable at a glance. Only
+the identifying word of the company is used: "Northwind Logistics, Inc." is `Northwind`, and a
+leading article is skipped, so "The Boston Consulting Group" is `Boston`. Capitalisation is kept as
+written, since this is a document a person receives rather than a URL. Where the posting names no
+company it falls back to `Name-Resume.ext`.
+
+The server names the file and the browser reads that name back off `Content-Disposition`, so there
+is one source of truth rather than two that can drift apart.
+
+### The PDF
+
+**Download resume** always gives a PDF. It is drawn directly with `pdfkit` rather than by printing
+HTML through a headless browser, so there is no Chromium binary to ship and it runs anywhere the app
+does, serverless included. The built-in Helvetica means no font files either.
+
+It is deliberately plain, single-column, and free of letter-spacing on the headings: an ATS reading
+the PDF gets `SUMMARY`, not `S U M M A RY`. A test extracts the text back out of the generated PDF
+and asserts every heading and bullet survives, because a resume that renders beautifully and parses
+badly is a worse resume.
+
+Word, Markdown and plain text are still there as small links under the button — some applications
+want a `.docx`.
+
+## Known limits
+
+- **Scanned PDFs** have no text layer and there is no OCR — paste the text instead.
+- Only the resume is stored, in your browser. The tailored result, the change list and the job
+  posting are not — reloading after a run loses them.

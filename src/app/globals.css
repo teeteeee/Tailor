@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --foreground: #14181f;
+  --muted: #5b6673;
+  --border: #dfe3e9;
+  --accent: #1f3a5f;
+  --accent-soft: #e8eef6;
+  --good: #14795c;
+  --good-soft: #dff2ea;
+  --warn: #9a5b00;
+  --warn-soft: #fbeedb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d1117;
+    --surface: #151b23;
+    --surface-2: #1c232d;
+    --foreground: #e7ecf3;
+    --muted: #949faf;
+    --border: #2a3441;
+    --accent: #8fb6e8;
+    --accent-soft: #1b2735;
+    --good: #4ecf9f;
+    --good-soft: #14261f;
+    --warn: #e5a856;
+    --warn-soft: #2a2114;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+textarea,
+input {
+  field-sizing: content;
+}
+
+/* Cmd-P on the review screen prints just the resume, at document proportions. */
+@media print {
+  :root {
+    --background: #ffffff;
+    --surface: #ffffff;
+    --foreground: #000000;
+    --muted: #333333;
+    --border: #cccccc;
+    --accent: #1f3a5f;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
