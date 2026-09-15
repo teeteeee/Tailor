@@ -73,7 +73,7 @@ describe("fetchJobPosting", () => {
 
   it("explains a block rather than failing obscurely", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => reply("no bots", { status: 403 })));
-    await expect(fetchJobPosting("https://jobs.example/job")).rejects.toThrow(/403.*paste the description/is);
+    await expect(fetchJobPosting("https://jobs.example/job")).rejects.toThrow(/403[\s\S]*paste the description/i);
   });
 
   it("rejects a page that is all scaffolding and no words", async () => {
