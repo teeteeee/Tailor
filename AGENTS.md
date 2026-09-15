@@ -65,3 +65,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   PgBouncer, Neon pooled) give each query whatever backend is free, so a prepared statement is
   missing on the next connection — it connects fine and fails on the first query, in production
   only. Do not turn it back on.
+- `/api/fetch-job` fetches a URL a visitor supplied, from inside the deployment — classic SSRF.
+  `src/lib/fetchJob.ts` refuses internal schemes, names, literal private addresses and hosts that
+  resolve to one, and re-checks every redirect hop. Never relax that, and never follow redirects
+  with `fetch`'s own handling, which would skip the re-check.

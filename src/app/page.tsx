@@ -61,6 +61,8 @@ export default function Home() {
   const [draft, setDraft] = useState<string | null>(null);
   const [draftFilename, setDraftFilename] = useState<string | null>(null);
   const [jobText, setJobText] = useState("");
+  const [jobUrl, setJobUrl] = useState("");
+  const [fetchingJob, setFetchingJob] = useState(false);
 
   const rawSaved = useSyncExternalStore(subscribeResume, getResumeSnapshot, getServerResumeSnapshot);
   const saved = useMemo(() => parseResumeSnapshot(rawSaved), [rawSaved]);
@@ -173,6 +175,21 @@ export default function Home() {
       setError(cause instanceof Error ? cause.message : "Could not read that file.");
     } finally {
       setStage("idle");
+    }
+  }
+
+  /** Pull a posting in from its link, into the box, where it can be checked and edited. */
+  async function handleFetchJob() {
+    if (!jobUrl.trim()) return;
+    setFetchingJob(true);
+    setError(null);
+    try {
+      const data = await postJson<{ text: string }>("/api/fetch-job", { url: jobUrl });
+      setJobText(data.text);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not read that link.");
+    } finally {
+      setFetchingJob(false);
     }
   }
 
@@ -425,11 +442,37 @@ export default function Home() {
 
           <section className="rounded-xl border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold tracking-wide uppercase">2 · The job posting</h2>
+
+            <div className="mt-4 flex gap-2">
+              <input
+                type="url"
+                value={jobUrl}
+                onChange={(event) => setJobUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleFetchJob();
+                  }
+                }}
+                placeholder="Paste a link to the posting…"
+                className="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+              <button
+                type="button"
+                onClick={handleFetchJob}
+                disabled={fetchingJob || jobUrl.trim().length === 0}
+                className="shrink-0 rounded-md border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40"
+              >
+                {fetchingJob ? "Reading…" : "Fetch"}
+              </button>
+            </div>
+            <p className="mt-1.5 text-center text-xs text-muted">or paste the description below</p>
+
             <textarea
               value={jobText}
               onChange={(event) => setJobText(event.target.value)}
               placeholder="Paste the full job description — requirements, responsibilities, the lot."
-              className="mt-4 max-h-[32rem] min-h-[22rem] w-full resize-y rounded-md border border-line bg-surface-2 p-3 text-sm leading-relaxed outline-none focus:border-accent"
+              className="mt-3 max-h-[32rem] min-h-[22rem] w-full resize-y rounded-md border border-line bg-surface-2 p-3 text-sm leading-relaxed outline-none focus:border-accent"
             />
             <button
               type="button"

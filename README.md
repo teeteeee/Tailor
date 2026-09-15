@@ -38,6 +38,7 @@ total time instead of the two adding up.
 | Step | Route | Model call? | What it does |
 |---|---|---|---|
 | Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
+| Fetch posting | `POST /api/fetch-job` | no | A posting's link → its readable text, put in the box to check |
 | Tailor | `POST /api/tailor` | yes ×2 | Analyses the posting and tailors the resume, concurrently, streaming progress |
 | Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
 | Answer | `POST /api/answer` | yes | An application question → an answer from the resume and posting, streamed |
@@ -45,6 +46,20 @@ total time instead of the two adding up.
 Two more routes finish the job: `POST /api/cover-letter` drafts a letter from the tailored resume,
 and `POST /api/export` renders PDF (via `pdfkit`), `.docx` (via `docx`), Markdown, or plain text —
 neither export nor keyword coverage costs anything.
+
+### Giving it a link
+
+The posting can be pasted, or given as a URL: the server fetches the page, strips it to readable
+text, and puts that in the box — visible and editable, rather than sent straight to the model.
+
+Fetching a URL that someone else supplies, from inside the deployment, is the classic server-side
+request forgery shape, so `src/lib/fetchJob.ts` refuses anything internal: non-http schemes,
+`localhost`-style names, literal private addresses, and hosts that *resolve* to one. Redirects are
+followed manually and re-checked at each hop, because a public URL redirecting to `169.254.169.254`
+is exactly how that guard gets walked around. Responses are capped at 2 MB and 12 seconds.
+
+Plenty of job boards block automated visits or build the page in the browser. When that happens the
+error says so and tells you to paste instead, rather than failing obscurely.
 
 ### Keeping it quick
 
