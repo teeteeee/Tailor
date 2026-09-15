@@ -54,3 +54,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Job keywords are deduplicated by `normalizeKeywords()` in `src/lib/keywords.ts`, applied both in
   `analyzeJob` and inside the coverage functions. The schema asks the model for a unique list but
   does not enforce one, and a repeat rendered a duplicate chip and broke React's keying.
+- Accounts and history are optional: `databaseConfigured()` gates them, and with no `DATABASE_URL`
+  the app must behave exactly as it did before. Database tests are `describe.runIf(DATABASE_URL)`,
+  so `npm test` passes without one — run them with a real Postgres, never a mock.
+- The proxy only checks that a session cookie exists; `requireUser()` in `src/lib/session.ts` is the
+  real authorization, because only a route can reach the database. Never authorize in the proxy.
+- Every runs query is scoped by `user_id`. A test asserts one account cannot read, pin or delete
+  another's runs — keep it that way.

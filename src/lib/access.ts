@@ -11,7 +11,7 @@ export type AccessDecision =
   | { type: "unauthorized" };
 
 /** Reachable without a session, or there would be no way to sign in. */
-const OPEN_PATHS = new Set(["/login", "/api/login"]);
+const OPEN_PATHS = new Set(["/login", "/api/login", "/signup", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/account"]);
 
 /**
  * The whole access rule, as a pure function so it can be tested.
@@ -27,8 +27,19 @@ export function decideAccess(input: {
   isPublic: boolean;
   isProduction: boolean;
   cookie: string;
+  /** Accounts are configured, so a session cookie replaces the shared password. */
+  hasAccounts?: boolean;
 }): AccessDecision {
-  const { pathname, password, isPublic, isProduction, cookie } = input;
+  const { pathname, password, isPublic, isProduction, cookie, hasAccounts } = input;
+
+  if (hasAccounts) {
+    if (OPEN_PATHS.has(pathname)) return { type: "allow" };
+    // Presence only. Whether the cookie is real is decided by the route, which
+    // can reach the database; the proxy merely avoids rendering a page to
+    // someone who plainly is not signed in.
+    if (cookie) return { type: "allow" };
+    return pathname.startsWith("/api/") ? { type: "unauthorized" } : { type: "login" };
+  }
 
   if (isPublic) return { type: "allow" };
   if (!password) return isProduction ? { type: "closed" } : { type: "allow" };

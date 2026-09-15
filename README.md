@@ -218,6 +218,32 @@ rate limit. Two things follow from that, and neither is hypothetical:
 `APP_PUBLIC` is deliberately a separate setting from an absent password, so that *forgetting* to
 configure access still closes the site. Opening it has to be a decision someone made on purpose.
 
+## Accounts and history
+
+Set `DATABASE_URL` to any Postgres connection string and the app grows accounts and a history page.
+Without it nothing changes: no accounts, no history, and access stays on the shared password or
+`APP_PUBLIC`. Existing deployments are not forced to migrate.
+
+With a database:
+
+- People sign up with an email and password, which replaces the shared gate — each person sees only
+  their own work. Passwords are stored as salted scrypt hashes, sessions live in the database behind
+  an httpOnly cookie, and a wrong password takes the same time as an unknown account so the login
+  cannot be used to discover who has registered.
+- Every tailoring run is saved. `/history` lists them newest first, with search over company and job
+  title, a date filter, and a pin that floats the ones worth keeping to the top. Deleting a run
+  removes it; deleting an account takes its runs with it.
+- Opening a past run restores it — resume, changes, gaps, answers — including which changes you had
+  rejected, because the stored copy is kept in step as you work rather than frozen at the moment the
+  model finished.
+
+The schema is created on demand by `migrate()`, which is idempotent and runs on the paths that need
+it, so there is no separate migration step to remember on a serverless deployment.
+
+**What this means for privacy:** with a database the app stores resumes on your server. Without one
+it stores nothing at all. That is a real change in what you are responsible for, particularly on a
+public deployment where the resumes are other people's.
+
 ## Layout
 
 ```
@@ -229,6 +255,10 @@ src/
     api/                  extract · tailor · answer · close-gap · cover-letter · export · login
   components/             ResumePreview, ChangeList, Coverage, Gaps, Answers, Dropzone, ScoreRing
   lib/
+    db.ts                 Postgres pool and the schema
+    accounts.ts           sign-up, sign-in, sessions, password hashing
+    runs.ts               saved runs: list, search, pin, delete
+    session.ts            who is signed in, for pages and routes
     schema.ts             zod schemas — the contract with the model
     claude.ts             the model calls, model selection, and the honesty rules they share
     extract.ts            PDF (unpdf) / DOCX (mammoth) / text

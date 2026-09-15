@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Answers, type Answer } from "@/components/Answers";
 import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
@@ -24,6 +26,13 @@ import {
 import type { Change, Job, Resume, TailorResult } from "@/lib/schema";
 
 type Coverages = { before: KeywordHit[]; after: KeywordHit[] };
+type RestoredRun = {
+  job: Job;
+  result: TailorResult;
+  coverage: Coverages;
+  rejected: string[];
+  answers: Answer[];
+};
 type Stage = "idle" | "reading" | "tailoring";
 
 const STAGE_TEXT: Record<Exclude<Stage, "idle">, string> = {
@@ -46,6 +55,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export default function Home() {
+  const router = useRouter();
   // `draft` is what the user has typed or uploaded this session; until they
   // touch anything it is null and the saved resume shows through.
   const [draft, setDraft] = useState<string | null>(null);
@@ -69,6 +79,11 @@ export default function Home() {
   const [letter, setLetter] = useState<string | null>(null);
   const [letterBusy, setLetterBusy] = useState(false);
 
+  const [runId, setRunId] = useState<string | null>(null);
+  // Set while loading a past run, so restoring it does not immediately save it
+  // back. A ref, not state: it marks a moment rather than describing the UI.
+  const justRestored = useRef(false);
+  const [account, setAccount] = useState<{ email: string } | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [streamingAnswer, setStreamingAnswer] = useState<Answer | null>(null);
   const [answerBusy, setAnswerBusy] = useState(false);
@@ -77,6 +92,47 @@ export default function Home() {
   const [busyGap, setBusyGap] = useState<string | null>(null);
 
   const busy = stage !== "idle";
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const response = await fetch("/api/account").catch(() => null);
+      if (!response?.ok || cancelled) return;
+      const data = (await response.json()) as { email?: string | null };
+      if (!cancelled && data.email) setAccount({ email: data.email });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Opening a past run from the history page.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("run");
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`/api/runs/${id}`);
+        const data = (await response.json()) as { run?: { payload: RestoredRun }; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Could not open that application.");
+        if (cancelled || !data.run) return;
+        const { job: savedJob, result: savedResult, coverage: savedCoverage, rejected: savedRejected, answers: savedAnswers } = data.run.payload;
+        setJob(savedJob);
+        setResult(savedResult);
+        setCoverage(savedCoverage);
+        justRestored.current = true;
+        setRejected(new Set(savedRejected ?? []));
+        setAnswers(savedAnswers ?? []);
+        setRunId(id);
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not open that application.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Keep the stored copy in step with the box, so a pasted resume is remembered
   // as readily as an uploaded one. Writing to storage is an external-system
@@ -136,6 +192,7 @@ export default function Home() {
       if (!tailored) throw new Error("The server closed the connection before finishing.");
       const { job: analysed, result: tailoredResult, coverage: tailoredCoverage } = tailored;
       setJob(analysed);
+      setRunId((tailored as { runId?: string | null }).runId ?? null);
       setResult(tailoredResult);
       setCoverage(tailoredCoverage);
       setRejected(new Set());
@@ -221,6 +278,24 @@ export default function Home() {
     }
   }
 
+  // Keep the stored run in step with what the user accepted and asked, so
+  // reopening it shows what they left rather than the raw model output.
+  useEffect(() => {
+    if (!runId) return;
+    if (justRestored.current) {
+      justRestored.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void fetch(`/api/runs/${runId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rejected: [...rejected], answers }),
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [runId, rejected, answers]);
+
   /** Answer one application question from the tailored resume and the posting. */
   async function handleAsk(question: string) {
     if (!finalResume || !job) return;
@@ -255,7 +330,9 @@ export default function Home() {
     setGapState({});
     setAnswers([]);
     setStreamingAnswer(null);
+    setRunId(null);
     setError(null);
+    window.history.replaceState(null, "", "/");
   }
 
   const toggle = (id: string) =>
@@ -277,15 +354,37 @@ export default function Home() {
             Rewrites what you already did so the right parts land first. It never invents experience.
           </p>
         </div>
-        {result ? (
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
-          >
-            Tailor another
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {account ? (
+            <>
+              <Link href="/history" className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
+                History
+              </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  setAccount(null);
+                  router.replace("/login");
+                  router.refresh();
+                }}
+                title={account.email}
+                className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+              >
+                Sign out
+              </button>
+            </>
+          ) : null}
+          {result ? (
+            <button
+              type="button"
+              onClick={reset}
+              className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
+            >
+              Tailor another
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {error ? (

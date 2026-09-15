@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, decideAccess } from "@/lib/access";
+import { databaseConfigured } from "@/lib/db";
 
 export function proxy(request: NextRequest) {
   const decision = decideAccess({
@@ -8,6 +9,7 @@ export function proxy(request: NextRequest) {
     isPublic: process.env.APP_PUBLIC === "true",
     isProduction: process.env.NODE_ENV === "production",
     cookie: request.cookies.get(SESSION_COOKIE)?.value ?? "",
+    hasAccounts: databaseConfigured(),
   });
 
   switch (decision.type) {

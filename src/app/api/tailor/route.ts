@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeJob, tailorResume } from "@/lib/claude";
 import { keywordCoverage, keywordCoverageInText } from "@/lib/keywords";
 import { describeError } from "@/lib/http";
+import { saveRun } from "@/lib/runs";
+import { userFromRequest } from "@/lib/session";
+import { databaseConfigured, migrate } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,15 +45,35 @@ export async function POST(request: NextRequest) {
           }),
         ]);
 
-        send({
-          type: "result",
-          job,
-          result,
-          coverage: {
-            before: keywordCoverageInText(resumeText, job.keywords),
-            after: keywordCoverage(result.resume, job.keywords),
-          },
-        });
+        const coverage = {
+          before: keywordCoverageInText(resumeText, job.keywords),
+          after: keywordCoverage(result.resume, job.keywords),
+        };
+
+        // Keep it in the signed-in user's history. A failure here must not cost
+        // them the tailoring they just waited for, so it is reported as an id
+        // of null rather than thrown.
+        let runId: string | null = null;
+        if (databaseConfigured()) {
+          try {
+            const user = await userFromRequest(request);
+            if (user) {
+              await migrate();
+              runId = await saveRun(user.id, {
+                resumeText,
+                job,
+                result,
+                coverage,
+                rejected: [],
+                answers: [],
+              });
+            }
+          } catch (error) {
+            console.error("[resume-tailor] could not save run to history", error);
+          }
+        }
+
+        send({ type: "result", job, result, coverage, runId });
       } catch (error) {
         // Headers are already sent, so a failure has to travel inside the stream.
         send({ type: "error", error: describeError(error).message });
