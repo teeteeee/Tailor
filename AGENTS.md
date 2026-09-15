@@ -61,3 +61,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   real authorization, because only a route can reach the database. Never authorize in the proxy.
 - Every runs query is scoped by `user_id`. A test asserts one account cannot read, pin or delete
   another's runs — keep it that way.
+- The Postgres client sets `prepare: false`. Transaction-mode poolers (Supabase's Supavisor,
+  PgBouncer, Neon pooled) give each query whatever backend is free, so a prepared statement is
+  missing on the next connection — it connects fine and fails on the first query, in production
+  only. Do not turn it back on.

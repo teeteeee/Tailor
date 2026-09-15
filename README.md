@@ -221,6 +221,9 @@ configure access still closes the site. Opening it has to be a decision someone 
 ## Accounts and history
 
 Set `DATABASE_URL` to any Postgres connection string and the app grows accounts and a history page.
+Use the **pooled** connection string — on Supabase the Transaction pooler (port 6543), on Neon the
+pooled endpoint — because serverless opens and drops connections constantly and would exhaust a
+direct database.
 Without it nothing changes: no accounts, no history, and access stays on the shared password or
 `APP_PUBLIC`. Existing deployments are not forced to migrate.
 

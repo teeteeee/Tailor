@@ -19,7 +19,18 @@ export function db(): postgres.Sql {
   if (!url) throw new Error("DATABASE_URL is not set, so there is no database to talk to.");
   // One pool per process, created on first use: module load happens during the
   // build, where connecting would be both pointless and fatal.
-  client ??= postgres(url, { max: 5, idle_timeout: 20, connect_timeout: 10 });
+  client ??= postgres(url, {
+    max: 5,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    // Transaction-mode poolers — Supabase's Supavisor, PgBouncer, Neon's pooled
+    // endpoint — hand each query to whichever backend is free, so a statement
+    // prepared on one connection is missing on the next. postgres.js prepares
+    // by default, which connects fine and then fails on the first query, in
+    // production only. The cost of turning it off is negligible here: these are
+    // a handful of small queries per request.
+    prepare: false,
+  });
   return client;
 }
 
