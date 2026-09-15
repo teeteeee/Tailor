@@ -179,14 +179,15 @@ GitHub repo on every push.
    | Variable | Required | Notes |
    |---|---|---|
    | `ANTHROPIC_API_KEY` | yes | Nothing can be tailored without it |
-   | `APP_PASSWORD` | yes in production | The password the site asks for. Make it long |
+   | `APP_PASSWORD` | one of these two | The password the site asks for. Make it long |
+   | `APP_PUBLIC` | one of these two | `true` opens the site to anyone with the link — see below |
    | `TAILOR_MODEL` | no | Defaults to `claude-haiku-4-5` |
 
 4. Deploy. Redeploy after changing an environment variable — they are read at boot.
 
-Set the variables **before** the first deploy if you can. A deployment without `APP_PASSWORD` is
-closed rather than open (see below), so nothing is exposed either way, but the site will return 503
-until you set one.
+Set the variables **before** the first deploy if you can. A deployment with neither `APP_PASSWORD`
+nor `APP_PUBLIC` is closed rather than open, so nothing is exposed either way, but the site returns
+503 until you set one.
 
 ### The password gate
 
@@ -204,6 +205,18 @@ of everything:
 
 It is one shared password, not user accounts — right for something you use yourself or share with a
 few people, not for a public service.
+
+### Opening it to everyone
+
+`APP_PUBLIC=true` removes the gate: anyone with the link can use the app, with no password and no
+rate limit. Two things follow from that, and neither is hypothetical:
+
+- **Every run spends your API credits**, roughly five cents each. A link that leaks, or a bot that
+  finds it, spends them at whatever rate it likes. There is no cap.
+- **Resumes people paste in reach Anthropic under your account**, not theirs.
+
+`APP_PUBLIC` is deliberately a separate setting from an absent password, so that *forgetting* to
+configure access still closes the site. Opening it has to be a decision someone made on purpose.
 
 ## Layout
 

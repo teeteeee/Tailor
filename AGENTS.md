@@ -18,8 +18,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The model's contract is the zod schemas in `src/lib/schema.ts` — change a schema and the prompt
   descriptions that go with it together.
 - Keyword coverage is deliberately deterministic (`src/lib/keywords.ts`), not model-judged.
-- `src/proxy.ts` gates every route behind `APP_PASSWORD`. It must stay fail-closed in production:
-  no password set means 503, never an open site. API routes get 401 JSON, not a redirect.
+- `src/proxy.ts` gates every route, delegating the rule to `decideAccess()` in `src/lib/access.ts`,
+  which is pure and tested — put changes there, not in the proxy. It must stay fail-closed in
+  production: neither `APP_PASSWORD` nor `APP_PUBLIC` set means 503, never an open site. API routes
+  get 401 JSON, not a redirect. `APP_PUBLIC=true` opens the site to everyone and is deliberately a
+  separate setting from an absent password, so an accident cannot publish it.
 - Closing a gap (`/api/close-gap`) is the only path that adds unseen content, and only from the
   candidate's own words. The model rewords what they wrote and nothing else; unsupported evidence
   must change nothing and return a reason. Never let a gap be added on a click alone.
