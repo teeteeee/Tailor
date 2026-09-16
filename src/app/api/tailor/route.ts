@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeJob, tailorResume } from "@/lib/claude";
 import { keywordCoverage, keywordCoverageInText } from "@/lib/keywords";
 import { describeError } from "@/lib/http";
+import { UnfetchableUrlError, fetchJobPosting } from "@/lib/fetchJob";
 import { saveRun } from "@/lib/runs";
 import { userFromRequest } from "@/lib/session";
 import { databaseConfigured, migrate } from "@/lib/db";
@@ -18,11 +19,12 @@ export const maxDuration = 60;
  * then a single result line.
  */
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as { resumeText?: string; jobText?: string };
+  const body = (await request.json()) as { resumeText?: string; jobText?: string; jobUrl?: string };
   const resumeText = (body.resumeText ?? "").trim();
-  const jobText = (body.jobText ?? "").trim();
+  const pastedJob = (body.jobText ?? "").trim();
+  const jobUrl = (body.jobUrl ?? "").trim();
 
-  if (resumeText.length < 120 || jobText.length < 80) {
+  if (resumeText.length < 120 || (pastedJob.length < 80 && !jobUrl)) {
     return NextResponse.json({ error: "Missing or malformed resume/job text." }, { status: 400 });
   }
 
@@ -38,6 +40,16 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => send({ type: "progress", written }), 700);
 
       try {
+        // A link is read here rather than in the browser, so giving one goes
+        // straight to tailoring instead of making the user fetch, look, then ask.
+        let jobText = pastedJob;
+        if (jobUrl) {
+          send({ type: "progress", written: 0, stage: "reading the posting" });
+          jobText = await fetchJobPosting(jobUrl);
+        }
+        if (jobText.length < 80) {
+          throw new UnfetchableUrlError("That posting had too little text to work from.");
+        }
         const [job, result] = await Promise.all([
           analyzeJob(jobText),
           tailorResume(resumeText, jobText, (characters) => {

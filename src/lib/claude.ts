@@ -271,15 +271,15 @@ export async function closeGap(resume: Resume, job: Job, gap: string, evidence: 
     max_tokens: 16000,
     output_config: outputConfig(generationFormat(GapFillSchema), "medium"),
     system: `The candidate is filling a gap in their resume. They have told you, in their own words,
-what they actually did. Place it into the resume.
+what they actually did. Say where it goes.
 
 ${HONESTY_RULES}
 
 Two further rules for this task specifically:
 - Everything you write must come from the candidate's statement below. Reword it into resume voice;
   do not extend it, do not add a metric it does not contain, and do not infer adjacent skills.
-- If their statement does not actually evidence the gap, change nothing: return the resume exactly as
-  given, an empty "changes" list, and say so in one sentence in "note".
+- If their statement does not actually evidence the gap, return an empty "changes" list and say so in
+  one sentence in "note".
 
 Where it goes:
 - Work they did in a role already on the resume becomes a bullet on that role.
@@ -287,7 +287,11 @@ Where it goes:
 - Anything that fits nowhere becomes a bullet on the most recent relevant role.
 
 Append to arrays rather than inserting into the middle of them, so existing positions do not move.
-Return the complete resume, plus one change entry per edit, with dot paths into that resume.`,
+
+Return ONLY the edits, in "changes" — not the resume. The caller already has the resume and applies
+what you return, so re-stating it wastes the candidate's time waiting. Each entry carries a dot path
+into the resume exactly as given to you: "edit" replaces what is at that path, and "add" inserts at
+the index the path ends in, which for an appended bullet is the current length of that list.`,
     messages: [
       {
         role: "user",

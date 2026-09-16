@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { closeGap } from "@/lib/claude";
+import { applyChanges } from "@/lib/apply";
 import { keywordCoverage } from "@/lib/keywords";
 import { JobSchema, ResumeSchema } from "@/lib/schema";
 import { errorResponse } from "@/lib/http";
@@ -26,9 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     const filled = await closeGap(resume.data, job.data, gap, evidence);
+    // The model returned only the edits; the resume is assembled here.
+    const updated = applyChanges(resume.data, filled.changes);
     return NextResponse.json({
-      ...filled,
-      coverage: keywordCoverage(filled.resume, job.data.keywords),
+      resume: updated,
+      changes: filled.changes,
+      note: filled.note,
+      coverage: keywordCoverage(updated, job.data.keywords),
     });
   } catch (error) {
     return errorResponse(error);

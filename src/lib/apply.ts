@@ -146,6 +146,39 @@ export function mergeChanges(existing: Change[], incoming: Change[]): Change[] {
 }
 
 /**
+ * Apply changes forward onto a resume.
+ *
+ * The counterpart to applyRejections: used where the model returns only what it
+ * changed rather than the whole document, so the caller holds the resume and
+ * the model spends its output on the edit alone.
+ *
+ * Order matters. Edits go first, then removals from the end backwards, then
+ * insertions from the start forwards, so no earlier operation invalidates a
+ * later one's index.
+ */
+export function applyChanges(resume: Resume, changes: Change[]): Resume {
+  const result = clone(resume) as Resume;
+
+  for (const change of changes.filter((c) => c.kind === "edit")) {
+    setAtPath(result, change.path, change.after);
+  }
+
+  const byIndex = (a: Change, b: Change) => indexOf(a) - indexOf(b);
+
+  for (const change of changes.filter((c) => c.kind === "remove").sort(byIndex).reverse()) {
+    const located = arrayAt(result, change.path);
+    if (located && located.index < located.array.length) located.array.splice(located.index, 1);
+  }
+
+  for (const change of changes.filter((c) => c.kind === "add").sort(byIndex)) {
+    const located = arrayAt(result, change.path);
+    if (located) located.array.splice(Math.min(located.index, located.array.length), 0, change.after);
+  }
+
+  return result;
+}
+
+/**
  * Discard edits that do not actually change anything.
  *
  * A model asked to log its edits will sometimes report a bullet it left alone,

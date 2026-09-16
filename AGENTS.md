@@ -69,3 +69,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   `src/lib/fetchJob.ts` refuses internal schemes, names, literal private addresses and hosts that
   resolve to one, and re-checks every redirect hop. Never relax that, and never follow redirects
   with `fetch`'s own handling, which would skip the re-check.
+- Closing a gap returns ONLY the change entries; `applyChanges()` in `src/lib/apply.ts` assembles the
+  resume server-side. Making the model re-emit the whole resume to add one bullet is ~15x the output
+  and was the reason it felt slow — do not put the resume back in `GapFillSchema`.
+- A posting link is fetched inside `/api/tailor`, not in the browser: giving a link goes straight to
+  tailoring. `/api/fetch-job` remains for callers that want the text on its own.

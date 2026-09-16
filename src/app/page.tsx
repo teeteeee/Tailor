@@ -62,7 +62,6 @@ export default function Home() {
   const [draftFilename, setDraftFilename] = useState<string | null>(null);
   const [jobText, setJobText] = useState("");
   const [jobUrl, setJobUrl] = useState("");
-  const [fetchingJob, setFetchingJob] = useState(false);
 
   const rawSaved = useSyncExternalStore(subscribeResume, getResumeSnapshot, getServerResumeSnapshot);
   const saved = useMemo(() => parseResumeSnapshot(rawSaved), [rawSaved]);
@@ -71,6 +70,7 @@ export default function Home() {
   const filename = draft === null ? saved?.filename || null : draftFilename;
   const [stage, setStage] = useState<Stage>("idle");
   const [written, setWritten] = useState(0);
+  const [stageNote, setStageNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -178,30 +178,19 @@ export default function Home() {
     }
   }
 
-  /** Pull a posting in from its link, into the box, where it can be checked and edited. */
-  async function handleFetchJob() {
-    if (!jobUrl.trim()) return;
-    setFetchingJob(true);
-    setError(null);
-    try {
-      const data = await postJson<{ text: string }>("/api/fetch-job", { url: jobUrl });
-      setJobText(data.text);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not read that link.");
-    } finally {
-      setFetchingJob(false);
-    }
-  }
-
   async function handleTailor() {
     setError(null);
     setLetter(null);
     try {
       setStage("tailoring");
       setWritten(0);
+      setStageNote(jobUrl.trim() ? "reading the posting" : "");
       let tailored: { job: Job; result: TailorResult; coverage: Coverages } | null = null;
-      await postNdjson("/api/tailor", { resumeText, jobText }, (event) => {
-        if (event.type === "progress") setWritten(Number(event.written ?? 0));
+      await postNdjson("/api/tailor", { resumeText, jobText, jobUrl }, (event) => {
+        if (event.type === "progress") {
+          setWritten(Number(event.written ?? 0));
+          if (typeof event.stage === "string") setStageNote(event.stage);
+        }
         else if (event.type === "result") {
           tailored = event as unknown as { job: Job; result: TailorResult; coverage: Coverages };
         }
@@ -345,6 +334,7 @@ export default function Home() {
     setLetter(null);
     setRejected(new Set());
     setGapState({});
+    setStageNote("");
     setAnswers([]);
     setStreamingAnswer(null);
     setRunId(null);
@@ -443,29 +433,13 @@ export default function Home() {
           <section className="rounded-xl border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold tracking-wide uppercase">2 · The job posting</h2>
 
-            <div className="mt-4 flex gap-2">
-              <input
-                type="url"
-                value={jobUrl}
-                onChange={(event) => setJobUrl(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void handleFetchJob();
-                  }
-                }}
-                placeholder="Paste a link to the posting…"
-                className="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-              <button
-                type="button"
-                onClick={handleFetchJob}
-                disabled={fetchingJob || jobUrl.trim().length === 0}
-                className="shrink-0 rounded-md border border-line px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40"
-              >
-                {fetchingJob ? "Reading…" : "Fetch"}
-              </button>
-            </div>
+            <input
+              type="url"
+              value={jobUrl}
+              onChange={(event) => setJobUrl(event.target.value)}
+              placeholder="Paste a link to the posting…"
+              className="mt-4 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"
+            />
             <p className="mt-1.5 text-center text-xs text-muted">or paste the description below</p>
 
             <textarea
@@ -476,7 +450,7 @@ export default function Home() {
             />
             <button
               type="button"
-              disabled={busy || resumeText.trim().length < MIN_RESUME_CHARS || jobText.trim().length < MIN_JOB_CHARS}
+              disabled={busy || resumeText.trim().length < MIN_RESUME_CHARS || (jobText.trim().length < MIN_JOB_CHARS && !jobUrl.trim())}
               onClick={handleTailor}
               className="mt-4 w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#0d1117]"
             >
@@ -491,7 +465,11 @@ export default function Home() {
                   />
                 </div>
                 <p className="mt-2 text-center text-xs text-muted">
-                  {written > 0 ? `${written.toLocaleString()} characters written` : "Reading the posting…"}
+                  {written > 0
+                    ? `${written.toLocaleString()} characters written`
+                    : stageNote
+                      ? `${stageNote}…`
+                      : "Reading the posting…"}
                 </p>
               </>
             ) : null}

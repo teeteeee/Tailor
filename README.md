@@ -38,8 +38,8 @@ total time instead of the two adding up.
 | Step | Route | Model call? | What it does |
 |---|---|---|---|
 | Extract | `POST /api/extract` | no | PDF/DOCX/TXT → plain text, entirely on the server |
-| Fetch posting | `POST /api/fetch-job` | no | A posting's link → its readable text, put in the box to check |
-| Tailor | `POST /api/tailor` | yes ×2 | Analyses the posting and tailors the resume, concurrently, streaming progress |
+| Fetch posting | `POST /api/fetch-job` | no | A posting's link → its readable text, for callers that want it separately |
+| Tailor | `POST /api/tailor` | yes ×2 | Takes pasted text or a link, then analyses and tailors concurrently, streaming progress |
 | Close gap | `POST /api/close-gap` | yes | Your account of some experience → placed into the resume |
 | Answer | `POST /api/answer` | yes | An application question → an answer from the resume and posting, streamed |
 
@@ -49,8 +49,9 @@ neither export nor keyword coverage costs anything.
 
 ### Giving it a link
 
-The posting can be pasted, or given as a URL: the server fetches the page, strips it to readable
-text, and puts that in the box — visible and editable, rather than sent straight to the model.
+The posting can be pasted, or given as a URL. A link goes straight to tailoring: the server fetches
+the page and strips it to readable text as the first step of the same streamed request, rather than
+making you fetch, read it, and then ask.
 
 Fetching a URL that someone else supplies, from inside the deployment, is the classic server-side
 request forgery shape, so `src/lib/fetchJob.ts` refuses anything internal: non-http schemes,
@@ -161,7 +162,8 @@ something you have never done. Clicking one asks what you actually did; `POST /a
 places your own words into the right section — a bullet on the role, or an entry in a skill group.
 
 The model is held to what you wrote: it rewords it into resume voice and does nothing else — no
-added metric, no inferred adjacent skill. If what you say doesn't actually evidence the gap, it
+added metric, no inferred adjacent skill. It returns only the edits, never the resume, so closing a
+gap writes about 60 tokens rather than 900 and comes back in about a second rather than fifteen. If what you say doesn't actually evidence the gap, it
 changes nothing and tells you why. The result arrives as ordinary change entries, so a closed gap is
 reviewable and revertible like everything else.
 

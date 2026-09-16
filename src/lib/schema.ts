@@ -113,13 +113,16 @@ export const TailorResultSchema = z.object({
 export type TailorResult = z.infer<typeof TailorResultSchema>;
 
 /**
- * The result of closing a gap: the resume with the candidate's own evidence
- * placed into it, plus the change entries that put it there, so the addition is
- * reviewable and revertible like every other change.
+ * The result of closing a gap: just the edits that place the candidate's own
+ * evidence. The caller already holds the resume and applies them, so the model
+ * spends its output on the edit rather than re-emitting the whole document.
  */
 export const GapFillSchema = z.object({
-  resume: ResumeSchema.describe("The full resume with the evidence placed into it."),
-  changes: z.array(ChangeSchema).describe("One entry per edit made. Empty if the evidence could not be used."),
+  changes: z
+    .array(ChangeSchema)
+    .describe(
+      "Only the edits that place the evidence — not the resume. Empty if the evidence could not be used.",
+    ),
   note: z
     .string()
     .describe(

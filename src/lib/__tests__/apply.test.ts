@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRejections, dropNoOpChanges, getAtPath, mergeChanges } from "../apply";
+import { applyChanges, applyRejections, dropNoOpChanges, getAtPath, mergeChanges } from "../apply";
 import type { Change } from "../schema";
 import { makeResume } from "./fixtures";
 
@@ -171,5 +171,76 @@ describe("dropNoOpChanges", () => {
       change({ id: "c", before: "p", after: "q" }),
     ]);
     expect(kept.map((c) => c.id)).toEqual(["a", "c"]);
+  });
+});
+
+describe("applyChanges", () => {
+  it("applies an edit at a path", () => {
+    const result = applyChanges(makeResume(), [change({ path: "summary", after: "Rewritten summary." })]);
+    expect(result.summary).toBe("Rewritten summary.");
+  });
+
+  it("appends a bullet at the end of a role", () => {
+    const resume = makeResume();
+    const result = applyChanges(resume, [
+      change({ kind: "add", path: "experience.0.bullets.2", before: "", after: "Built the gRPC services." }),
+    ]);
+    expect(result.experience[0].bullets).toEqual([
+      "Built an ETL pipeline",
+      "Mentored two engineers",
+      "Built the gRPC services.",
+    ]);
+  });
+
+  it("adds an item to a skill group", () => {
+    const result = applyChanges(makeResume(), [
+      change({ kind: "add", path: "skills.0.items.2", before: "", after: "gRPC" }),
+    ]);
+    expect(result.skills[0].items).toEqual(["Python", "Go", "gRPC"]);
+  });
+
+  it("does not mutate the resume it was given", () => {
+    const resume = makeResume();
+    applyChanges(resume, [change({ path: "summary", after: "changed" })]);
+    expect(resume.summary).toBe("Engineer who builds data pipelines.");
+  });
+
+  it("applies several additions without index drift", () => {
+    const result = applyChanges(makeResume(), [
+      change({ id: "a", kind: "add", path: "experience.0.bullets.2", before: "", after: "Third" }),
+      change({ id: "b", kind: "add", path: "experience.0.bullets.3", before: "", after: "Fourth" }),
+    ]);
+    expect(result.experience[0].bullets.slice(2)).toEqual(["Third", "Fourth"]);
+  });
+
+  it("removes from the end backwards, so earlier removals stay valid", () => {
+    const resume = makeResume();
+    resume.experience[0].bullets = ["A", "B", "C"];
+    const result = applyChanges(resume, [
+      change({ id: "a", kind: "remove", path: "experience.0.bullets.0", before: "A", after: "" }),
+      change({ id: "b", kind: "remove", path: "experience.0.bullets.2", before: "C", after: "" }),
+    ]);
+    expect(result.experience[0].bullets).toEqual(["B"]);
+  });
+
+  it("ignores a change whose path does not resolve", () => {
+    const resume = makeResume();
+    expect(applyChanges(resume, [change({ path: "experience.9.bullets.0" })])).toEqual(resume);
+  });
+
+  it("round-trips: applying then rejecting leaves the original", () => {
+    const original = makeResume();
+    const edit = change({ path: "summary", before: original.summary, after: "Tailored summary." });
+    const applied = applyChanges(original, [edit]);
+    expect(applied.summary).toBe("Tailored summary.");
+    expect(applyRejections(applied, [edit], [edit.id])).toEqual(original);
+  });
+
+  it("round-trips an addition: applying then rejecting removes it again", () => {
+    const original = makeResume();
+    const addition = change({ kind: "add", path: "experience.0.bullets.2", before: "", after: "New bullet" });
+    const applied = applyChanges(original, [addition]);
+    expect(applied.experience[0].bullets).toHaveLength(3);
+    expect(applyRejections(applied, [addition], [addition.id])).toEqual(original);
   });
 });
