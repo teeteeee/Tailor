@@ -89,3 +89,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Admin views expose activity only: counts, dates, company and job title. Never the resume, the
   tailored text or the answers — a test asserts the responses carry none of it. Widening that is a
   new permission, not a tweak.
+- The app is light only. There is no `prefers-color-scheme: dark` block, `:root` sets
+  `color-scheme: light`, and the `dark:` variant is pointed at a class nothing sets so those
+  utilities never fire on a dark-mode machine. Do not reintroduce a dark theme without being asked.

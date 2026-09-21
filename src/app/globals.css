@@ -1,12 +1,22 @@
 @import "tailwindcss";
 
+/* The app is light, whatever the operating system prefers. Without this,
+   `dark:` utilities would still fire on a dark-mode machine and paint dark text
+   onto light surfaces; pointing the variant at a class nothing sets disables
+   them all in one place. */
+@custom-variant dark (&:where(.tailor-dark, .tailor-dark *));
+
 :root {
-  --background: #f6f7f9;
+  /* Tells the browser to render form controls and scrollbars light too, so a
+     dark-mode machine does not put a black scrollbar beside a white page. */
+  color-scheme: light;
+
+  --background: #fbf9f8;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
+  --surface-2: #f4f1ef;
   --foreground: #14181f;
-  --muted: #5b6673;
-  --border: #dfe3e9;
+  --muted: #6b6560;
+  --border: #e6e1dd;
   --accent: #ea580c;
   --accent-soft: #ffece1;
   /* A truer green than the old #14795c, which leaned teal and muddied the
@@ -17,23 +27,6 @@
      would read as a button instead of a shortfall. */
   --warn: #be123c;
   --warn-soft: #ffe4e8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d1117;
-    --surface: #151b23;
-    --surface-2: #1c232d;
-    --foreground: #e7ecf3;
-    --muted: #949faf;
-    --border: #2a3441;
-    --accent: #fb923c;
-    --accent-soft: #2c1710;
-    --good: #4ade80;
-    --good-soft: #0f2417;
-    --warn: #fb7185;
-    --warn-soft: #2b1219;
-  }
 }
 
 @theme inline {
