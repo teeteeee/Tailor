@@ -2,7 +2,9 @@ export function ScoreRing({ score, label }: { score: number; label: string }) {
   const clamped = Math.max(0, Math.min(100, Math.round(score)));
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
-  const tone = clamped >= 75 ? "var(--good)" : clamped >= 50 ? "var(--warn)" : "var(--accent)";
+  // Middling is the accent, not the warning colour: a 70 is a decent match and
+  // should not be painted the same red as a gap.
+  const tone = clamped >= 75 ? "var(--good)" : clamped >= 50 ? "var(--accent)" : "var(--warn)";
 
   return (
     <div className="flex items-center gap-3">

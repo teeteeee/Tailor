@@ -79,3 +79,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The UI accent is teal (`--accent` in `src/app/globals.css`); the generated PDF and .docx keep a
   navy accent on purpose, because those go to employers and are not the app's to restyle. Changing
   one does not imply changing the other.
+- The sidebar (`src/components/Sidebar.tsx`, wrapped by `AppShell`) navigates between runs with
+  `Link`, which does not remount the page. `page.tsx` therefore depends on `useSearchParams()`'s
+  `run` value, not a mount-only effect — a mount-only read fires once and never again. Both
+  components need their `useSearchParams()` under a `Suspense` boundary or the build fails on the
+  prerendered page.

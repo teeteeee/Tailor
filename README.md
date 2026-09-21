@@ -275,7 +275,8 @@ src/
     page.tsx              the whole flow: input → progress → review
     login/                the password prompt
     api/                  extract · tailor · answer · close-gap · cover-letter · export · login
-  components/             ResumePreview, ChangeList, Coverage, Gaps, Answers, Dropzone, ScoreRing
+  components/             AppShell + Sidebar, ResumePreview, ChangeList, Coverage, Gaps,
+                          Answers, Dropzone, ScoreRing
   lib/
     db.ts                 Postgres pool and the schema
     accounts.ts           sign-up, sign-in, sessions, password hashing

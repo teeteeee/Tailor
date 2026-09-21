@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppShell } from "@/components/AppShell";
 import { Answers, type Answer } from "@/components/Answers";
 import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
@@ -54,8 +54,15 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export default function Home() {
-  const router = useRouter();
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <Home />
+    </Suspense>
+  );
+}
+
+function Home() {
   // `draft` is what the user has typed or uploaded this session; until they
   // touch anything it is null and the saved resume shows through.
   const [draft, setDraft] = useState<string | null>(null);
@@ -85,7 +92,6 @@ export default function Home() {
   // Set while loading a past run, so restoring it does not immediately save it
   // back. A ref, not state: it marks a moment rather than describing the UI.
   const justRestored = useRef(false);
-  const [account, setAccount] = useState<{ email: string } | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [streamingAnswer, setStreamingAnswer] = useState<Answer | null>(null);
   const [answerBusy, setAnswerBusy] = useState(false);
@@ -95,27 +101,32 @@ export default function Home() {
 
   const busy = stage !== "idle";
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const response = await fetch("/api/account").catch(() => null);
-      if (!response?.ok || cancelled) return;
-      const data = (await response.json()) as { email?: string | null };
-      if (!cancelled && data.email) setAccount({ email: data.email });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Which past run the URL is pointing at. Read through Next's hook and
+  // depended on, because moving between runs in the sidebar is client-side
+  // navigation: the page does not remount, so a mount-only effect would fire
+  // once and never again.
+  const runParam = useSearchParams().get("run");
 
-  // Opening a past run from the history page.
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("run");
-    if (!id) return;
     let cancelled = false;
+
     (async () => {
+      if (!runParam) {
+        // Back to a blank slate — leaving a run should not leave it on screen.
+        if (!cancelled) {
+          setResult(null);
+          setCoverage(null);
+          setJob(null);
+          setRunId(null);
+          setAnswers([]);
+          setGapState({});
+          setRejected(new Set());
+        }
+        return;
+      }
+
       try {
-        const response = await fetch(`/api/runs/${id}`);
+        const response = await fetch(`/api/runs/${runParam}`);
         const data = (await response.json()) as { run?: { payload: RestoredRun }; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not open that application.");
         if (cancelled || !data.run) return;
@@ -126,15 +137,16 @@ export default function Home() {
         justRestored.current = true;
         setRejected(new Set(savedRejected ?? []));
         setAnswers(savedAnswers ?? []);
-        setRunId(id);
+        setRunId(runParam);
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not open that application.");
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [runParam]);
 
   // Keep the stored copy in step with the box, so a pasted resume is remembered
   // as readily as an uploaded one. Writing to storage is an external-system
@@ -351,47 +363,24 @@ export default function Home() {
     });
 
   return (
-    <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+    <AppShell>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
       <header className="no-print mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Resume <span className="text-accent">Tailor</span>
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Tailor a resume</h1>
           <p className="mt-1 text-sm text-muted">
             Rewrites what you already did so the right parts land first. It never invents experience.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {account ? (
-            <>
-              <Link href="/history" className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
-                History
-              </Link>
-              <button
-                type="button"
-                onClick={async () => {
-                  await fetch("/api/auth/logout", { method: "POST" });
-                  setAccount(null);
-                  router.replace("/login");
-                  router.refresh();
-                }}
-                title={account.email}
-                className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
-              >
-                Sign out
-              </button>
-            </>
-          ) : null}
-          {result ? (
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
-            >
-              Tailor another
-            </button>
-          ) : null}
-        </div>
+        {result ? (
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
+          >
+            Tailor another
+          </button>
+        ) : null}
       </header>
 
       {error ? (
@@ -588,5 +577,6 @@ export default function Home() {
         </div>
       )}
     </main>
+    </AppShell>
   );
 }

@@ -7,14 +7,16 @@
   --foreground: #14181f;
   --muted: #5b6673;
   --border: #dfe3e9;
-  --accent: #0f766e;
-  --accent-soft: #dcf2ef;
-  /* A truer green than the old #14795c, which sat too close to the teal accent
-     for a "found" chip to read as a different thing from a button. */
+  --accent: #ea580c;
+  --accent-soft: #ffece1;
+  /* A truer green than the old #14795c, which leaned teal and muddied the
+     distinction between a "found" chip and everything else. */
   --good: #15803d;
   --good-soft: #dcf7e3;
-  --warn: #9a5b00;
-  --warn-soft: #fbeedb;
+  /* Rose rather than amber: with a warm orange accent, an amber "gap" chip
+     would read as a button instead of a shortfall. */
+  --warn: #be123c;
+  --warn-soft: #ffe4e8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,12 +27,12 @@
     --foreground: #e7ecf3;
     --muted: #949faf;
     --border: #2a3441;
-    --accent: #2dd4bf;
-    --accent-soft: #10241f;
+    --accent: #fb923c;
+    --accent-soft: #2c1710;
     --good: #4ade80;
     --good-soft: #0f2417;
-    --warn: #e5a856;
-    --warn-soft: #2a2114;
+    --warn: #fb7185;
+    --warn-soft: #2b1219;
   }
 }
 
@@ -70,7 +72,7 @@ input {
     --foreground: #000000;
     --muted: #333333;
     --border: #cccccc;
-    --accent: #0f766e;
+    --accent: #ea580c;
   }
   .no-print {
     display: none !important;
