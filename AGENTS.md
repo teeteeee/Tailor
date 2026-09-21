@@ -1,0 +1,94 @@
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+
+## Resume Tailor
+
+- `npm test` (vitest), `npm run typecheck`, `npm run lint`, `npm run build` all must pass.
+- Model calls live only in `src/lib/claude.ts`. The default model is Haiku 4.5, overridable with
+  `TAILOR_MODEL`; Haiku rejects `output_config.effort`, which is why `outputConfig()` omits it.
+- Model calls live only in `src/lib/claude.ts`. Every prompt there inherits `HONESTY_RULES`: the app
+  reframes real experience and never invents any. Do not relax that in a prompt edit.
+- The model's contract is the zod schemas in `src/lib/schema.ts` — change a schema and the prompt
+  descriptions that go with it together.
+- Keyword coverage is deliberately deterministic (`src/lib/keywords.ts`), not model-judged.
+- `src/proxy.ts` gates every route, delegating the rule to `decideAccess()` in `src/lib/access.ts`,
+  which is pure and tested — put changes there, not in the proxy. It must stay fail-closed in
+  production: neither `APP_PASSWORD` nor `APP_PUBLIC` set means 503, never an open site. API routes
+  get 401 JSON, not a redirect. `APP_PUBLIC=true` opens the site to everyone and is deliberately a
+  separate setting from an absent password, so an accident cannot publish it.
+- Closing a gap (`/api/close-gap`) is the only path that adds unseen content, and only from the
+  candidate's own words. The model rewords what they wrote and nothing else; unsupported evidence
+  must change nothing and return a reason. Never let a gap be added on a click alone.
+- `/api/tailor` streams newline-delimited JSON (progress lines, then one result line) and runs
+  analyzeJob and tailorResume concurrently. Errors after the first byte must travel inside the
+  stream as an `error` line — use `describeError()` so the wording matches `errorResponse()`.
+- Tailoring is by exception: leaving a bullet as written is the normal outcome, and every change
+  must name the posting requirement it serves. Do not soften that back into general "improve the
+  bullets" phrasing — over-rewriting is both the main quality complaint and a latency cost.
+- The PDF (`src/lib/pdf.ts`) is drawn with pdfkit, never a headless browser — no Chromium on
+  serverless. Keep it single-column and keep letter-spacing off the headings: `pdf.test.ts` extracts
+  the text back out and asserts an ATS would read them intact.
+- The saved resume (`src/lib/storage.ts`) is browser-local and read through `useSyncExternalStore`.
+  Do not read localStorage during render (no value on the server) or setState from an effect to
+  restore it (cascading renders, and the lint rule rejects it).
+- `/api/answer` writes application answers from the tailored resume and the posting only. Every
+  specific must be traceable to the resume; where it is silent the answer says so rather than
+  inventing. It streams over the shared NDJSON helper (`src/lib/ndjson.ts`).
+- Model output is parsed by `src/lib/parse.ts`, not the SDK's auto-parser: a single malformed
+  change entry must not discard a whole response. An unrecognised `kind` is repaired into the edit
+  it functionally is; only what cannot be repaired is dropped, and the resume still fails loudly.
+  When editing the tailoring prompt, check every operation it recommends is expressible in
+  `ChangeSchema` — telling the model to reorder while `kind` had no such value is what caused a
+  crash in the wild.
+- Download names come from `src/lib/filename.ts` (`Name-Company.ext`), chosen server-side and read
+  back by the client from `Content-Disposition` — do not reconstruct the name in the browser. Names
+  normalise as NFC, not NFKD: decomposing splits accents into combining marks and hyphenates
+  "Ramírez" mid-word.
+- Job keywords are deduplicated by `normalizeKeywords()` in `src/lib/keywords.ts`, applied both in
+  `analyzeJob` and inside the coverage functions. The schema asks the model for a unique list but
+  does not enforce one, and a repeat rendered a duplicate chip and broke React's keying.
+- Accounts and history are optional: `databaseConfigured()` gates them, and with no `DATABASE_URL`
+  the app must behave exactly as it did before. Database tests are `describe.runIf(DATABASE_URL)`,
+  so `npm test` passes without one — run them with a real Postgres, never a mock.
+- The proxy only checks that a session cookie exists; `requireUser()` in `src/lib/session.ts` is the
+  real authorization, because only a route can reach the database. Never authorize in the proxy.
+- Every runs query is scoped by `user_id`. A test asserts one account cannot read, pin or delete
+  another's runs — keep it that way.
+- The Postgres client sets `prepare: false`. Transaction-mode poolers (Supabase's Supavisor,
+  PgBouncer, Neon pooled) give each query whatever backend is free, so a prepared statement is
+  missing on the next connection — it connects fine and fails on the first query, in production
+  only. Do not turn it back on.
+- `/api/fetch-job` fetches a URL a visitor supplied, from inside the deployment — classic SSRF.
+  `src/lib/fetchJob.ts` refuses internal schemes, names, literal private addresses and hosts that
+  resolve to one, and re-checks every redirect hop. Never relax that, and never follow redirects
+  with `fetch`'s own handling, which would skip the re-check.
+- Closing a gap returns ONLY the change entries; `applyChanges()` in `src/lib/apply.ts` assembles the
+  resume server-side. Making the model re-emit the whole resume to add one bullet is ~15x the output
+  and was the reason it felt slow — do not put the resume back in `GapFillSchema`.
+- A posting link is fetched inside `/api/tailor`, not in the browser: giving a link goes straight to
+  tailoring. `/api/fetch-job` remains for callers that want the text on its own.
+- Sign-up has no password length rule by the operator's decision — only non-empty, and an upper
+  bound so scrypt cannot be made expensive. Do not reintroduce a minimum without being asked.
+- The UI accent is teal (`--accent` in `src/app/globals.css`); the generated PDF and .docx keep a
+  navy accent on purpose, because those go to employers and are not the app's to restyle. Changing
+  one does not imply changing the other.
+- The sidebar (`src/components/Sidebar.tsx`, wrapped by `AppShell`) navigates between runs with
+  `Link`, which does not remount the page. `page.tsx` therefore depends on `useSearchParams()`'s
+  `run` value, not a mount-only effect — a mount-only read fires once and never again. Both
+  components need their `useSearchParams()` under a `Suspense` boundary or the build fails on the
+  prerendered page.
+- Admin is `ADMIN_EMAILS` (`src/lib/admin.ts`), never a database column — the role must not be
+  grantable from inside the app. `requireAdmin()` answers 404, not 403, to a signed-in non-admin.
+- Admin views expose activity only: counts, dates, company and job title. Never the resume, the
+  tailored text or the answers — a test asserts the responses carry none of it. Widening that is a
+  new permission, not a tweak.
+- The app is light only. There is no `prefers-color-scheme: dark` block, `:root` sets
+  `color-scheme: light`, and the `dark:` variant is pointed at a class nothing sets so those
+  utilities never fire on a dark-mode machine. Do not reintroduce a dark theme without being asked.

@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+/* The app is light, whatever the operating system prefers. Without this,
+   `dark:` utilities would still fire on a dark-mode machine and paint dark text
+   onto light surfaces; pointing the variant at a class nothing sets disables
+   them all in one place. */
+@custom-variant dark (&:where(.tailor-dark, .tailor-dark *));
+
+:root {
+  /* Tells the browser to render form controls and scrollbars light too, so a
+     dark-mode machine does not put a black scrollbar beside a white page. */
+  color-scheme: light;
+
+  --background: #fbf9f8;
+  --surface: #ffffff;
+  --surface-2: #f4f1ef;
+  --foreground: #14181f;
+  --muted: #6b6560;
+  --border: #e6e1dd;
+  --accent: #ea580c;
+  --accent-soft: #ffece1;
+  /* A truer green than the old #14795c, which leaned teal and muddied the
+     distinction between a "found" chip and everything else. */
+  --good: #15803d;
+  --good-soft: #dcf7e3;
+  /* Rose rather than amber: with a warm orange accent, an amber "gap" chip
+     would read as a button instead of a shortfall. */
+  --warn: #be123c;
+  --warn-soft: #ffe4e8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+textarea,
+input {
+  field-sizing: content;
+}
+
+/* Cmd-P on the review screen prints just the resume, at document proportions. */
+@media print {
+  :root {
+    --background: #ffffff;
+    --surface: #ffffff;
+    --foreground: #000000;
+    --muted: #333333;
+    --border: #cccccc;
+    --accent: #ea580c;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
