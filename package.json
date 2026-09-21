@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:check": "node --env-file-if-exists=.env.local scripts/check-db.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

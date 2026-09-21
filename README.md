@@ -22,6 +22,7 @@ and every export work without a key; only the analyse and tailor steps need one,
 app says so plainly rather than failing obscurely.
 
 ```bash
+npm run db:check # is DATABASE_URL reachable and the schema there?
 npm test        # unit tests (vitest)
 npm run build   # production build
 npm run lint
