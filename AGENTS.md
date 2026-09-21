@@ -76,3 +76,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   tailoring. `/api/fetch-job` remains for callers that want the text on its own.
 - Sign-up has no password length rule by the operator's decision — only non-empty, and an upper
   bound so scrypt cannot be made expensive. Do not reintroduce a minimum without being asked.
+- The UI accent is teal (`--accent` in `src/app/globals.css`); the generated PDF and .docx keep a
+  navy accent on purpose, because those go to employers and are not the app's to restyle. Changing
+  one does not imply changing the other.

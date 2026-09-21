@@ -7,10 +7,12 @@
   --foreground: #14181f;
   --muted: #5b6673;
   --border: #dfe3e9;
-  --accent: #1f3a5f;
-  --accent-soft: #e8eef6;
-  --good: #14795c;
-  --good-soft: #dff2ea;
+  --accent: #0f766e;
+  --accent-soft: #dcf2ef;
+  /* A truer green than the old #14795c, which sat too close to the teal accent
+     for a "found" chip to read as a different thing from a button. */
+  --good: #15803d;
+  --good-soft: #dcf7e3;
   --warn: #9a5b00;
   --warn-soft: #fbeedb;
 }
@@ -23,10 +25,10 @@
     --foreground: #e7ecf3;
     --muted: #949faf;
     --border: #2a3441;
-    --accent: #8fb6e8;
-    --accent-soft: #1b2735;
-    --good: #4ecf9f;
-    --good-soft: #14261f;
+    --accent: #2dd4bf;
+    --accent-soft: #10241f;
+    --good: #4ade80;
+    --good-soft: #0f2417;
     --warn: #e5a856;
     --warn-soft: #2a2114;
   }
@@ -68,7 +70,7 @@ input {
     --foreground: #000000;
     --muted: #333333;
     --border: #cccccc;
-    --accent: #1f3a5f;
+    --accent: #0f766e;
   }
   .no-print {
     display: none !important;
