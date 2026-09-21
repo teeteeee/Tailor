@@ -13,6 +13,7 @@ import {
   verifyPassword,
 } from "../accounts";
 import { deleteRun, getRun, listRuns, saveRun, setPinned, type RunPayload } from "../runs";
+import { dailyCounts, listUserActivity, listUserApplications } from "../adminStats";
 import { makeResume } from "./fixtures";
 
 const payload = (company: string, title = "Engineer"): RunPayload => ({
@@ -201,6 +202,86 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
       await saveRun(ada, payload("Northwind"));
       await db()`DELETE FROM users WHERE id = ${ada}`;
       expect(await db()`SELECT id FROM runs WHERE user_id = ${ada}`).toHaveLength(0);
+    });
+  });
+
+  describe("admin activity", () => {
+    let ada = "";
+    let bob = "";
+    beforeEach(async () => {
+      ada = (await createUser("ada@example.com", "hunter2")).id;
+      bob = (await createUser("bob@example.com", "hunter2")).id;
+    });
+
+    it("counts each person's applications, today and over the week", async () => {
+      await saveRun(ada, payload("Northwind"));
+      await saveRun(ada, payload("Acme"));
+      const old = await saveRun(ada, payload("Ancient"));
+      await db()`UPDATE runs SET created_at = now() - interval '30 days' WHERE id = ${old}`;
+      await saveRun(bob, payload("Monzo"));
+
+      const activity = await listUserActivity();
+      const forAda = activity.find((entry) => entry.email === "ada@example.com")!;
+      expect(forAda.total).toBe(3);
+      expect(forAda.today).toBe(2);
+      expect(forAda.lastSevenDays).toBe(2);
+      expect(forAda.lastActiveAt).not.toBeNull();
+    });
+
+    it("includes people who have done nothing at all", async () => {
+      const activity = await listUserActivity();
+      expect(activity).toHaveLength(2);
+      expect(activity.every((entry) => entry.total === 0)).toBe(true);
+      expect(activity.every((entry) => entry.lastActiveAt === null)).toBe(true);
+    });
+
+    it("searches by email", async () => {
+      expect((await listUserActivity({ query: "ada" })).map((entry) => entry.email)).toEqual(["ada@example.com"]);
+      expect(await listUserActivity({ query: "nobody" })).toHaveLength(0);
+    });
+
+    it("sorts by volume and by email", async () => {
+      await saveRun(bob, payload("One"));
+      await saveRun(bob, payload("Two"));
+      await saveRun(ada, payload("Only"));
+      expect((await listUserActivity({ sort: "most" })).map((e) => e.email)).toEqual([
+        "bob@example.com",
+        "ada@example.com",
+      ]);
+      expect((await listUserActivity({ sort: "email" })).map((e) => e.email)).toEqual([
+        "ada@example.com",
+        "bob@example.com",
+      ]);
+    });
+
+    it("lists one person's applications, and only theirs", async () => {
+      await saveRun(ada, payload("Northwind", "Platform Engineer"));
+      await saveRun(bob, payload("Monzo"));
+      const applications = await listUserApplications(ada);
+      expect(applications).toHaveLength(1);
+      expect(applications[0]).toMatchObject({ company: "Northwind", jobTitle: "Platform Engineer", matchScore: 72 });
+    });
+
+    it("returns activity without any resume content", async () => {
+      await saveRun(ada, payload("Northwind"));
+      const serialised = JSON.stringify(await listUserApplications(ada));
+      // The payload holds the resume; an admin view must not carry it.
+      expect(serialised).not.toContain("Ada Lovelace");
+      expect(serialised).not.toContain("ETL");
+      expect(serialised).not.toContain("payload");
+    });
+
+    it("counts applications per day", async () => {
+      await saveRun(ada, payload("A"));
+      await saveRun(ada, payload("B"));
+      const yesterday = await saveRun(ada, payload("C"));
+      await db()`UPDATE runs SET created_at = now() - interval '1 day' WHERE id = ${yesterday}`;
+
+      const daily = await dailyCounts(ada);
+      expect(daily).toHaveLength(2);
+      expect(daily[0].count).toBe(2);
+      expect(daily[1].count).toBe(1);
+      expect(daily[0].day > daily[1].day).toBe(true);
     });
   });
 });

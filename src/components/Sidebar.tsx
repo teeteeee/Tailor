@@ -21,7 +21,7 @@ type RunSummary = {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [account, setAccount] = useState<{ email: string } | null>(null);
+  const [account, setAccount] = useState<{ email: string; isAdmin: boolean } | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -36,9 +36,9 @@ export function Sidebar() {
     (async () => {
       const response = await fetch("/api/account").catch(() => null);
       if (!response?.ok || cancelled) return;
-      const { email } = (await response.json()) as { email?: string | null };
+      const { email, isAdmin } = (await response.json()) as { email?: string | null; isAdmin?: boolean };
       if (!email || cancelled) return;
-      setAccount({ email });
+      setAccount({ email, isAdmin: Boolean(isAdmin) });
 
       const list = await fetch("/api/runs").catch(() => null);
       if (!list?.ok || cancelled) return;
@@ -88,6 +88,7 @@ export function Sidebar() {
       <nav className="mt-4 space-y-0.5 px-2">
         {navLink("/", "Current resume", pathname === "/" && !activeRun)}
         {account ? navLink("/history", "All history", pathname === "/history") : null}
+        {account?.isAdmin ? navLink("/admin", "Users", pathname === "/admin") : null}
       </nav>
 
       {account ? (

@@ -84,3 +84,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   `run` value, not a mount-only effect — a mount-only read fires once and never again. Both
   components need their `useSearchParams()` under a `Suspense` boundary or the build fails on the
   prerendered page.
+- Admin is `ADMIN_EMAILS` (`src/lib/admin.ts`), never a database column — the role must not be
+  grantable from inside the app. `requireAdmin()` answers 404, not 403, to a signed-in non-admin.
+- Admin views expose activity only: counts, dates, company and job title. Never the resume, the
+  tailored text or the answers — a test asserts the responses carry none of it. Widening that is a
+  new permission, not a tweak.
