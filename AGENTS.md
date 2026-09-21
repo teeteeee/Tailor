@@ -74,3 +74,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   and was the reason it felt slow — do not put the resume back in `GapFillSchema`.
 - A posting link is fetched inside `/api/tailor`, not in the browser: giving a link goes straight to
   tailoring. `/api/fetch-job` remains for callers that want the text on its own.
+- Sign-up has no password length rule by the operator's decision — only non-empty, and an upper
+  bound so scrypt cannot be made expensive. Do not reintroduce a minimum without being asked.

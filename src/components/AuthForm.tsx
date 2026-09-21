@@ -68,7 +68,6 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           onChange={(event) => setPassword(event.target.value)}
           className="mt-1.5 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"
         />
-        {signingUp ? <p className="mt-1.5 text-xs text-muted">At least 10 characters.</p> : null}
 
         {error ? <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">{error}</p> : null}
 

@@ -40,9 +40,15 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Deliberately permissive: the operator asked for no length rule, so any
+ * password a person actually types is accepted. Empty is still refused —
+ * that is not a weak password, it is no password — and the upper bound only
+ * stops an absurd input making scrypt expensive.
+ */
 export function validateCredentials(email: string, password: string): string | null {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email))) return "That doesn't look like an email address.";
-  if (password.length < 10) return "Use a password of at least 10 characters.";
+  if (password.length === 0) return "Enter a password.";
   if (password.length > 200) return "That password is too long.";
   return null;
 }

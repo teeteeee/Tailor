@@ -55,36 +55,42 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
 
   describe("validateCredentials", () => {
     it("accepts a reasonable pair", () => {
-      expect(validateCredentials("ada@example.com", "a-long-enough-password")).toBeNull();
+      expect(validateCredentials("ada@example.com", "hunter2")).toBeNull();
     });
 
-    it("rejects a bad email or a short password", () => {
-      expect(validateCredentials("not-an-email", "a-long-enough-password")).toMatch(/email/);
-      expect(validateCredentials("ada@example.com", "short")).toMatch(/10 characters/);
+    it("accepts a short password — there is deliberately no length rule", () => {
+      expect(validateCredentials("ada@example.com", "abc")).toBeNull();
+      expect(validateCredentials("ada@example.com", "x")).toBeNull();
+    });
+
+    it("still rejects a bad email, an empty password, and an absurd one", () => {
+      expect(validateCredentials("not-an-email", "whatever")).toMatch(/email/);
+      expect(validateCredentials("ada@example.com", "")).toMatch(/Enter a password/);
+      expect(validateCredentials("ada@example.com", "x".repeat(201))).toMatch(/too long/);
     });
   });
 
   describe("accounts", () => {
     it("creates an account and signs in", async () => {
-      const created = await createUser("Ada@Example.com", "a-long-enough-password");
+      const created = await createUser("Ada@Example.com", "hunter2");
       expect(created.email).toBe("ada@example.com");
-      const signedIn = await authenticate("ada@example.com", "a-long-enough-password");
+      const signedIn = await authenticate("ada@example.com", "hunter2");
       expect(signedIn.id).toBe(created.id);
     });
 
     it("treats email case-insensitively when signing in", async () => {
-      await createUser("ada@example.com", "a-long-enough-password");
-      expect((await authenticate("ADA@EXAMPLE.COM", "a-long-enough-password")).email).toBe("ada@example.com");
+      await createUser("ada@example.com", "hunter2");
+      expect((await authenticate("ADA@EXAMPLE.COM", "hunter2")).email).toBe("ada@example.com");
       expect(normalizeEmail("  Ada@Example.COM ")).toBe("ada@example.com");
     });
 
     it("refuses a duplicate email", async () => {
-      await createUser("ada@example.com", "a-long-enough-password");
+      await createUser("ada@example.com", "hunter2");
       await expect(createUser("ADA@example.com", "another-long-password")).rejects.toThrow(AccountError);
     });
 
     it("gives the same error for a wrong password and an unknown account", async () => {
-      await createUser("ada@example.com", "a-long-enough-password");
+      await createUser("ada@example.com", "hunter2");
       const message = async (email: string) =>
         authenticate(email, "nope-not-it-at-all").then(
           () => "unexpectedly signed in",
@@ -96,7 +102,7 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
 
   describe("sessions", () => {
     it("resolves a session to its user and forgets it on sign-out", async () => {
-      const user = await createUser("ada@example.com", "a-long-enough-password");
+      const user = await createUser("ada@example.com", "hunter2");
       const token = await startSession(user.id);
       expect((await userForSession(token))?.id).toBe(user.id);
       await endSession(token);
@@ -109,14 +115,14 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
     });
 
     it("rejects an expired session", async () => {
-      const user = await createUser("ada@example.com", "a-long-enough-password");
+      const user = await createUser("ada@example.com", "hunter2");
       const token = await startSession(user.id);
       await db()`UPDATE sessions SET expires_at = now() - interval '1 day' WHERE token = ${token}`;
       expect(await userForSession(token)).toBeNull();
     });
 
     it("drops sessions when the account goes", async () => {
-      const user = await createUser("ada@example.com", "a-long-enough-password");
+      const user = await createUser("ada@example.com", "hunter2");
       const token = await startSession(user.id);
       await db()`DELETE FROM users WHERE id = ${user.id}`;
       expect(await userForSession(token)).toBeNull();
@@ -127,8 +133,8 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
     let ada = "";
     let bob = "";
     beforeEach(async () => {
-      ada = (await createUser("ada@example.com", "a-long-enough-password")).id;
-      bob = (await createUser("bob@example.com", "a-long-enough-password")).id;
+      ada = (await createUser("ada@example.com", "hunter2")).id;
+      bob = (await createUser("bob@example.com", "hunter2")).id;
     });
 
     it("saves a run and reads it back whole", async () => {

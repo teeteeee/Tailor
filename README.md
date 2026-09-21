@@ -248,7 +248,8 @@ Without it nothing changes: no accounts, no history, and access stays on the sha
 With a database:
 
 - People sign up with an email and password, which replaces the shared gate — each person sees only
-  their own work. Passwords are stored as salted scrypt hashes, sessions live in the database behind
+  their own work. There is deliberately no minimum length: an empty password is refused, anything
+  else is accepted. Passwords are stored as salted scrypt hashes, sessions live in the database behind
   an httpOnly cookie, and a wrong password takes the same time as an unknown account so the login
   cannot be used to discover who has registered.
 - Every tailoring run is saved. `/history` lists them newest first, with search over company and job
