@@ -35,9 +35,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The PDF (`src/lib/pdf.ts`) is drawn with pdfkit, never a headless browser — no Chromium on
   serverless. Keep it single-column and keep letter-spacing off the headings: `pdf.test.ts` extracts
   the text back out and asserts an ATS would read them intact.
-- The saved resume (`src/lib/storage.ts`) is browser-local and read through `useSyncExternalStore`.
-  Do not read localStorage during render (no value on the server) or setState from an effect to
-  restore it (cascading renders, and the lint rule rejects it).
+- The saved resume belongs to the account. `src/lib/storage.ts` is an external store read through
+  `useSyncExternalStore`; on first subscribe it asks `/api/resume`, and a 200 makes the account copy
+  in Postgres the source of truth, so signing in on another machine finds the same resume. A 401 —
+  no session, or no database at all — falls back to localStorage, which is how the app behaved
+  before accounts and must keep working. A resume already in localStorage when an account first
+  answers is moved up and the local copy cleared; never leave two copies to drift. Do not read
+  localStorage during render (no value on the server) or setState from an effect to restore it
+  (cascading renders, and the lint rule rejects it). `resetResumeStore()` on sign-out is not
+  optional: signing out is client-side navigation, so the module-level store survives it and the
+  next account would be shown the previous one's resume.
+- Reads and writes of `saved_resumes` (`src/lib/savedResume.ts`) are keyed by `user_id` and nothing
+  takes a row id, so no request shape reads across accounts. A test asserts one account can neither
+  see nor delete another's resume — keep it that way.
 - `/api/answer` writes application answers from the tailored resume and the posting only. Every
   specific must be traceable to the resume; where it is silent the answer says so rather than
   inventing. It streams over the shared NDJSON helper (`src/lib/ndjson.ts`).

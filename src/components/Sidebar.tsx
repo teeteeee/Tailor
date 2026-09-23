@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { resetResumeStore } from "@/lib/storage";
 
 type RunSummary = {
   id: string;
@@ -132,6 +133,10 @@ export function Sidebar() {
             onClick={async () => {
               await fetch("/api/auth/logout", { method: "POST" });
               setAccount(null);
+              // Signing out is client-side navigation, so the module-level
+              // resume store survives it. Without this the next account to sign
+              // in on this tab would be shown the previous one's resume.
+              resetResumeStore();
               router.replace("/login");
               router.refresh();
             }}

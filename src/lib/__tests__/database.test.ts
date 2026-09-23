@@ -14,6 +14,7 @@ import {
 } from "../accounts";
 import { deleteRun, getRun, listRuns, saveRun, setPinned, type RunPayload } from "../runs";
 import { dailyCounts, listUserActivity, listUserApplications } from "../adminStats";
+import { clearSavedResume, getSavedResume, putSavedResume } from "../savedResume";
 import { makeResume } from "./fixtures";
 
 const payload = (company: string, title = "Engineer"): RunPayload => ({
@@ -33,7 +34,7 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
     await resetDbClient();
   });
   beforeEach(async () => {
-    await db()`TRUNCATE users, sessions, runs CASCADE`;
+    await db()`TRUNCATE users, sessions, runs, saved_resumes CASCADE`;
   });
 
   describe("passwords", () => {
@@ -202,6 +203,69 @@ describe.runIf(process.env.DATABASE_URL)("database", () => {
       await saveRun(ada, payload("Northwind"));
       await db()`DELETE FROM users WHERE id = ${ada}`;
       expect(await db()`SELECT id FROM runs WHERE user_id = ${ada}`).toHaveLength(0);
+    });
+  });
+
+  describe("saved resume", () => {
+    let ada = "";
+    let bob = "";
+    beforeEach(async () => {
+      ada = (await createUser("ada@example.com", "hunter2")).id;
+      bob = (await createUser("bob@example.com", "hunter2")).id;
+    });
+
+    it("has none until one is saved", async () => {
+      expect(await getSavedResume(ada)).toBeNull();
+    });
+
+    it("saves a resume and reads it back", async () => {
+      await putSavedResume(ada, "Ada Lovelace, engineer.", "ada-cv.pdf");
+      const saved = await getSavedResume(ada);
+      expect(saved?.text).toBe("Ada Lovelace, engineer.");
+      expect(saved?.filename).toBe("ada-cv.pdf");
+      expect(saved?.savedAt).toBeGreaterThan(0);
+    });
+
+    // The whole point of moving it off localStorage: the same account on a
+    // second machine is a second read, and it must find the same resume.
+    it("gives the same account the same resume on a later read", async () => {
+      await putSavedResume(ada, "Ada Lovelace, engineer.", "ada-cv.pdf");
+      expect((await getSavedResume(ada))?.text).toBe((await getSavedResume(ada))?.text);
+    });
+
+    it("keeps one resume per account, replacing rather than accumulating", async () => {
+      await putSavedResume(ada, "first draft", "one.pdf");
+      await putSavedResume(ada, "second draft", "two.pdf");
+      expect((await getSavedResume(ada))?.text).toBe("second draft");
+      expect((await getSavedResume(ada))?.filename).toBe("two.pdf");
+      expect(await db()`SELECT user_id FROM saved_resumes WHERE user_id = ${ada}`).toHaveLength(1);
+    });
+
+    it("never shows one person another person's resume", async () => {
+      await putSavedResume(ada, "Ada's resume", "ada.pdf");
+      expect(await getSavedResume(bob)).toBeNull();
+
+      await putSavedResume(bob, "Bob's resume", "bob.pdf");
+      expect((await getSavedResume(ada))?.text).toBe("Ada's resume");
+      expect((await getSavedResume(bob))?.text).toBe("Bob's resume");
+    });
+
+    it("cannot be cleared from another account", async () => {
+      await putSavedResume(ada, "Ada's resume", "ada.pdf");
+      expect(await clearSavedResume(bob)).toBe(false);
+      expect((await getSavedResume(ada))?.text).toBe("Ada's resume");
+    });
+
+    it("forgets on request", async () => {
+      await putSavedResume(ada, "Ada's resume", "ada.pdf");
+      expect(await clearSavedResume(ada)).toBe(true);
+      expect(await getSavedResume(ada)).toBeNull();
+    });
+
+    it("goes with the account", async () => {
+      await putSavedResume(ada, "Ada's resume", "ada.pdf");
+      await db()`DELETE FROM users WHERE id = ${ada}`;
+      expect(await db()`SELECT user_id FROM saved_resumes WHERE user_id = ${ada}`).toHaveLength(0);
     });
   });
 

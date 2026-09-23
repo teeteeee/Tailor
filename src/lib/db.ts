@@ -38,6 +38,7 @@ export function db(): postgres.Sql {
 export async function resetDbClient(): Promise<void> {
   await client?.end({ timeout: 5 });
   client = null;
+  migrated = null;
 }
 
 /**
@@ -74,6 +75,17 @@ export async function migrate(): Promise<void> {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // One resume per account, hence the primary key on user_id: the app has a
+  // single "your saved resume" slot, and an upsert keeps it that way. It lives
+  // here rather than in the browser so signing in on another machine finds it.
+  await sql`
+    CREATE TABLE IF NOT EXISTS saved_resumes (
+      user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      text         TEXT NOT NULL,
+      filename     TEXT NOT NULL DEFAULT '',
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
   await sql`CREATE INDEX IF NOT EXISTS runs_user_created ON runs (user_id, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS sessions_expires ON sessions (expires_at)`;
 
@@ -86,6 +98,7 @@ export async function migrate(): Promise<void> {
   await sql`ALTER TABLE users ENABLE ROW LEVEL SECURITY`;
   await sql`ALTER TABLE sessions ENABLE ROW LEVEL SECURITY`;
   await sql`ALTER TABLE runs ENABLE ROW LEVEL SECURITY`;
+  await sql`ALTER TABLE saved_resumes ENABLE ROW LEVEL SECURITY`;
 
   // Those roles exist only on Supabase, hence the guard: plain Postgres has
   // neither, and an unguarded REVOKE would fail the migration there.
@@ -93,11 +106,28 @@ export async function migrate(): Promise<void> {
     DO $$
     BEGIN
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-        REVOKE ALL ON TABLE users, sessions, runs FROM anon;
+        REVOKE ALL ON TABLE users, sessions, runs, saved_resumes FROM anon;
       END IF;
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-        REVOKE ALL ON TABLE users, sessions, runs FROM authenticated;
+        REVOKE ALL ON TABLE users, sessions, runs, saved_resumes FROM authenticated;
       END IF;
     END $$
   `;
+}
+
+let migrated: Promise<void> | null = null;
+
+/**
+ * migrate() for routes that run on an ordinary request rather than a sign-in.
+ *
+ * The schema only has to be brought up once per process, and a serverless
+ * instance serves many requests, so paying eight round trips on each of them
+ * would be pure latency. A failure is not cached: the next caller retries.
+ */
+export function ensureMigrated(): Promise<void> {
+  migrated ??= migrate().catch((error) => {
+    migrated = null;
+    throw error;
+  });
+  return migrated;
 }

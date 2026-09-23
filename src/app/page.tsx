@@ -17,9 +17,8 @@ import { coverageRatio, type KeywordHit } from "@/lib/keywords";
 import {
   describeAge,
   forgetResume,
-  getResumeSnapshot,
-  getServerResumeSnapshot,
-  parseResumeSnapshot,
+  getResumeState,
+  getServerResumeState,
   saveResume,
   subscribeResume,
 } from "@/lib/storage";
@@ -70,8 +69,10 @@ function Home() {
   const [jobText, setJobText] = useState("");
   const [jobUrl, setJobUrl] = useState("");
 
-  const rawSaved = useSyncExternalStore(subscribeResume, getResumeSnapshot, getServerResumeSnapshot);
-  const saved = useMemo(() => parseResumeSnapshot(rawSaved), [rawSaved]);
+  // The saved resume comes from the account when there is one, so signing in on
+  // another machine shows the same resume. The store settles that itself.
+  const savedState = useSyncExternalStore(subscribeResume, getResumeState, getServerResumeState);
+  const saved = savedState.resume;
 
   const resumeText = draft ?? saved?.text ?? "";
   const filename = draft === null ? saved?.filename || null : draftFilename;
@@ -392,11 +393,17 @@ function Home() {
           <section className="rounded-xl border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold tracking-wide uppercase">1 · Your resume</h2>
 
-            {saved ? (
+            {savedState.loading ? (
+              <p className="mt-4 rounded-md bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
+                Looking for your saved resume…
+              </p>
+            ) : saved ? (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-good-soft px-3 py-2 text-[12.5px] text-good">
                 <span>
-                  Using your saved resume
-                  {saved.filename ? ` (${saved.filename})` : ""} · kept {describeAge(saved.savedAt)}
+                  {savedState.scope === "account"
+                    ? "Saved to your account, on any device"
+                    : "Saved in this browser"}
+                  {saved.filename ? ` (${saved.filename})` : ""} · updated {describeAge(saved.savedAt)}
                 </span>
                 <button type="button" onClick={handleForget} className="underline underline-offset-2 hover:opacity-80">
                   Forget it
