@@ -24,6 +24,13 @@ describe("keywordCoverage", () => {
     expect(keywordCoverage(resume, ["Java"])[0].present).toBe(false);
   });
 
+  // A bullet very often ends on the keyword, so a full stop swallowing the
+  // match cost real coverage and read as a gap the candidate had to close.
+  it("matches a keyword that ends a sentence", () => {
+    const resume = makeResume({ summary: "Rolled out Kubernetes." });
+    expect(keywordCoverage(resume, ["Kubernetes"])[0].present).toBe(true);
+  });
+
   it("reports absent keywords with no locations", () => {
     const hit = keywordCoverage(makeResume(), ["Kubernetes"])[0];
     expect(hit.present).toBe(false);
@@ -46,6 +53,24 @@ describe("keywordCoverageInText", () => {
 
   it("uses the same whole-word rule as the structured matcher", () => {
     expect(keywordCoverageInText("Worked on Javanese linguistics.", ["Java"])[0].present).toBe(false);
+  });
+
+  it("is not thrown by the punctuation that ends a bullet", () => {
+    const present = (text: string, keyword: string) => keywordCoverageInText(text, [keyword])[0].present;
+
+    // A trailing full stop is punctuation, and used to hide the match.
+    expect(present("Used Kubernetes.", "Kubernetes")).toBe(true);
+    expect(present("Scaled to 4,000 endpoints.", "endpoints")).toBe(true);
+    expect(present("Wrote C#.", "C#")).toBe(true);
+    expect(present("Built with Node.js.", "Node.js")).toBe(true);
+    expect(present("Migrated to .NET.", ".NET")).toBe(true);
+    expect(present("Ran SIEM tuning (Splunk).", "Splunk")).toBe(true);
+    expect(present("Owned CI/CD, Terraform, and on-call.", "Terraform")).toBe(true);
+
+    // …and dropping it must not start matching things that are not there.
+    expect(present("Worked on Javanese linguistics.", "Java")).toBe(false);
+    expect(present("Python3 scripting.", "Python")).toBe(false);
+    expect(present("Shipped Node.js services.", "Node")).toBe(false);
   });
 });
 
