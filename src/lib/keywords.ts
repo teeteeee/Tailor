@@ -1,4 +1,8 @@
 import type { Resume } from "./schema";
+// Matching lives in text.ts: the grounding check asks the same question of the
+// same text, and the two must not drift into disagreeing about what "present"
+// means.
+import { containsPhrase as contains } from "./text";
 
 export type KeywordHit = {
   keyword: string;
@@ -24,30 +28,6 @@ function textSegments(resume: Resume): Array<{ location: string; text: string }>
   }
   if (resume.certifications.length) push("Certifications", ...resume.certifications);
   return segments;
-}
-
-/**
- * Whole-word, case- and punctuation-insensitive match. Deliberately literal:
- * an ATS matches strings, so we report what a string matcher would find.
- */
-function contains(haystack: string, needle: string): boolean {
-  const normalize = (value: string) =>
-    ` ${value
-      .toLowerCase()
-      // Anything that is not part of a word becomes a gap. `+`, `#` and `.`
-      // survive, because they carry meaning in "C++", "C#", ".NET" and "Node.js".
-      .replace(/[^a-z0-9+#.]+/g, " ")
-      // A `.` that ends a token is sentence punctuation rather than part of the
-      // word, and has to go before the padded compare. Keeping it meant a bullet
-      // ending "…rolled out Kubernetes." never matched the keyword "Kubernetes",
-      // and bullets end on their keyword constantly — so real coverage was
-      // reported as a gap. Only the trailing run goes: ".net" and "node.js" keep
-      // the dots that are doing work.
-      .replace(/\.+(?=\s|$)/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()} `;
-  const target = normalize(needle);
-  return target.trim().length > 0 && normalize(haystack).includes(target);
 }
 
 /**

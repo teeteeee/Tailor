@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { dropNoOpChanges } from "./apply";
+import { groundResult, type TailoredResume } from "./grounding";
 import { normalizeKeywords } from "./keywords";
 import { parseGapFill, parseTailorResult } from "./parse";
 import {
@@ -11,7 +12,6 @@ import {
   type GapFill,
   type Job,
   type Resume,
-  type TailorResult,
 } from "./schema";
 
 /**
@@ -117,6 +117,13 @@ Hard rules — these override every other instruction:
 - Never invent an employer, job title, date, degree, certification, or tool the candidate did not list.
 - Never invent a metric. If a bullet has no number, keep it unquantified rather than guessing one.
 - Never claim experience with a technology that does not appear anywhere in the source resume.
+- Every entry in experience, projects, education and certifications must already be in the source
+  resume. Never create a new one. In particular, never add a section for the company being applied
+  to or the role being applied for: a heading like "ACME PROJECTS" on a resume sent to Acme is not
+  tailoring, and the candidate has not worked there.
+- Never write a placeholder. No "to be populated", "upon hire", "TBD", "coming soon", no bracketed
+  blanks to fill in later. A resume is finished work, not a template. An empty string is correct
+  where there is nothing to say; a promise of future content is not.
 - You may reframe, reorder, re-emphasise, merge, split, and retitle existing content, and you may
   surface a skill the resume mentions in passing. That is the whole job.
 - If the candidate does not meet a requirement, say so in "gaps". Do not paper over it in the resume.
@@ -203,7 +210,7 @@ export async function tailorResume(
   resumeText: string,
   jobText: string,
   onProgress?: (charactersWritten: number) => void,
-): Promise<TailorResult> {
+): Promise<TailoredResume> {
   const client = getClient();
   const stream = client.messages.stream({
     model: MODEL,
@@ -227,7 +234,18 @@ export async function tailorResume(
 
   const message = await stream.finalMessage();
   const tailored = parseTailorResult(textOf(message, "Tailoring failed — the model returned no structured output."));
-  return { ...tailored, changes: dropNoOpChanges(tailored.changes) };
+
+  // The honesty rules are a request; this is the check. Anything the tailored
+  // resume asserts that the candidate's own does not is taken back out here,
+  // and what was taken is reported rather than quietly disappearing.
+  const { result, dropped } = groundResult(
+    { ...tailored, changes: dropNoOpChanges(tailored.changes) },
+    resumeText,
+  );
+  if (dropped.length) {
+    console.warn("[resume-tailor] dropped ungrounded content:", dropped.map((entry) => entry.label));
+  }
+  return { ...result, dropped };
 }
 
 export async function writeCoverLetter(resume: Resume, job: Job, notes: string): Promise<string> {

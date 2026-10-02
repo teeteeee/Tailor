@@ -22,6 +22,7 @@ import {
   saveResume,
   subscribeResume,
 } from "@/lib/storage";
+import type { TailoredResume } from "@/lib/grounding";
 import type { Change, Job, Resume, TailorResult } from "@/lib/schema";
 
 type Coverages = { before: KeywordHit[]; after: KeywordHit[] };
@@ -82,7 +83,7 @@ function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const [job, setJob] = useState<Job | null>(null);
-  const [result, setResult] = useState<TailorResult | null>(null);
+  const [result, setResult] = useState<TailoredResume | null>(null);
   const [coverage, setCoverage] = useState<Coverages | null>(null);
   const [rejected, setRejected] = useState<Set<string>>(new Set());
 
@@ -205,7 +206,7 @@ function Home() {
           if (typeof event.stage === "string") setStageNote(event.stage);
         }
         else if (event.type === "result") {
-          tailored = event as unknown as { job: Job; result: TailorResult; coverage: Coverages };
+          tailored = event as unknown as { job: Job; result: TailoredResume; coverage: Coverages };
         }
       });
       if (!tailored) throw new Error("The server closed the connection before finishing.");
@@ -532,6 +533,24 @@ function Home() {
                 <h2 className="mb-1 text-sm font-semibold">Keywords from the posting</h2>
                 <p className="mb-3 text-xs text-muted">Struck through means absent; + means tailoring surfaced it.</p>
                 <Coverage before={coverage.before} after={coverage.after} />
+              </section>
+            ) : null}
+
+            {result.dropped && result.dropped.length > 0 ? (
+              <section className="rounded-xl border border-warn/40 bg-warn-soft p-4">
+                <h2 className="mb-2 text-sm font-semibold text-warn">Removed before you saw it</h2>
+                <p className="mb-2 text-xs text-warn/90">
+                  This much was written that your resume does not support, so it was taken back out. Nothing here is
+                  on your resume — it is listed so you know it happened, not so you can put it back.
+                </p>
+                <ul className="space-y-1 text-xs text-warn">
+                  {result.dropped.map((entry) => (
+                    <li key={`${entry.section}-${entry.label}`}>
+                      <span className="font-medium">{entry.label}</span>
+                      <span className="opacity-80"> — {entry.reason}</span>
+                    </li>
+                  ))}
+                </ul>
               </section>
             ) : null}
 

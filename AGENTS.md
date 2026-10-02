@@ -17,7 +17,20 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   reframes real experience and never invents any. Do not relax that in a prompt edit.
 - The model's contract is the zod schemas in `src/lib/schema.ts` — change a schema and the prompt
   descriptions that go with it together.
-- Keyword coverage is deliberately deterministic (`src/lib/keywords.ts`), not model-judged.
+- Keyword coverage is deliberately deterministic (`src/lib/keywords.ts`), not model-judged. Phrase
+  matching itself lives in `src/lib/text.ts` and is shared with the grounding check, so the two
+  cannot drift into disagreeing about what "present in the resume" means.
+- `groundResult()` (`src/lib/grounding.ts`) runs on every tailoring result and is the enforcement
+  the honesty rules only request. It removes any experience/project/education entry whose name is
+  absent from the source resume AND none of whose lines appear there either, and any placeholder
+  line ("to be populated", "upon hire", "TBD", bracketed blanks) the candidate did not write. It
+  exists because a resume tailored for Tarpon Health came back with a section headed "TARPON HEALTH
+  PROJECTS — (Internal and client-facing work to be populated upon hire)": the rules forbid
+  *claiming* an employer, and a blank labelled "to be populated" claims nothing. Keep the entry test
+  conservative — wrongly deleting a real job is far worse than one odd line — and keep the removals
+  reported in `dropped` rather than silent. Dropping renumbers the resume, so change paths are
+  remapped in the same pass; a stale path makes `applyRejections()` revert the wrong line, or put
+  the invented entry back on a toggle. A test asserts the revert still lands correctly.
 - `src/proxy.ts` gates every route, delegating the rule to `decideAccess()` in `src/lib/access.ts`,
   which is pure and tested — put changes there, not in the proxy. It must stay fail-closed in
   production: neither `APP_PASSWORD` nor `APP_PUBLIC` set means 503, never an open site. API routes
