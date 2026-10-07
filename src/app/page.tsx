@@ -8,6 +8,7 @@ import { ChangeList } from "@/components/ChangeList";
 import { Coverage } from "@/components/Coverage";
 import { Dropzone } from "@/components/Dropzone";
 import { Gaps, type GapState } from "@/components/Gaps";
+import { Refine, type RefineTurn } from "@/components/Refine";
 import { ResumePreview } from "@/components/ResumePreview";
 import { ScoreRing } from "@/components/ScoreRing";
 import { applyRejections, mergeChanges } from "@/lib/apply";
@@ -32,6 +33,7 @@ type RestoredRun = {
   coverage: Coverages;
   rejected: string[];
   answers: Answer[];
+  chat: RefineTurn[];
 };
 type Stage = "idle" | "reading" | "tailoring";
 
@@ -98,6 +100,9 @@ function Home() {
   const [streamingAnswer, setStreamingAnswer] = useState<Answer | null>(null);
   const [answerBusy, setAnswerBusy] = useState(false);
 
+  const [chat, setChat] = useState<RefineTurn[]>([]);
+  const [refineBusy, setRefineBusy] = useState(false);
+
   const [gapState, setGapState] = useState<Record<string, GapState>>({});
   const [busyGap, setBusyGap] = useState<string | null>(null);
 
@@ -121,6 +126,7 @@ function Home() {
           setJob(null);
           setRunId(null);
           setAnswers([]);
+          setChat([]);
           setGapState({});
           setRejected(new Set());
         }
@@ -132,13 +138,21 @@ function Home() {
         const data = (await response.json()) as { run?: { payload: RestoredRun }; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not open that application.");
         if (cancelled || !data.run) return;
-        const { job: savedJob, result: savedResult, coverage: savedCoverage, rejected: savedRejected, answers: savedAnswers } = data.run.payload;
+        const {
+          job: savedJob,
+          result: savedResult,
+          coverage: savedCoverage,
+          rejected: savedRejected,
+          answers: savedAnswers,
+          chat: savedChat,
+        } = data.run.payload;
         setJob(savedJob);
         setResult(savedResult);
         setCoverage(savedCoverage);
         justRestored.current = true;
         setRejected(new Set(savedRejected ?? []));
         setAnswers(savedAnswers ?? []);
+        setChat(savedChat ?? []);
         setRunId(runParam);
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not open that application.");
@@ -310,11 +324,44 @@ function Home() {
       void fetch(`/api/runs/${runId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rejected: [...rejected], answers }),
+        body: JSON.stringify({ rejected: [...rejected], answers, chat }),
       }).catch(() => {});
     }, 800);
     return () => clearTimeout(timer);
-  }, [runId, rejected, answers]);
+  }, [runId, rejected, answers, chat]);
+
+  /**
+   * Rework the resume from an instruction typed in the chat.
+   *
+   * The edits come back as change entries and merge into the same review list
+   * as everything else, so a refinement is as revertable as a tailoring edit.
+   */
+  async function handleRefine(instruction: string) {
+    if (!result || !job || !finalResume) return;
+    const asked: RefineTurn = { role: "user", text: instruction };
+    setChat((previous) => [...previous, asked]);
+    setRefineBusy(true);
+    setError(null);
+    try {
+      const data = await postJson<{
+        resume: Resume;
+        changes: Change[];
+        reply: string;
+        coverage: KeywordHit[];
+      }>("/api/refine", { resume: finalResume, job, instruction, history: chat });
+
+      setChat((previous) => [...previous, { role: "assistant", text: data.reply }]);
+      if (data.changes.length === 0) return;
+
+      setResult({ ...result, resume: data.resume, changes: mergeChanges(result.changes, data.changes) });
+      setCoverage((previous) => (previous ? { ...previous, after: data.coverage } : previous));
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Could not make that change.";
+      setChat((previous) => [...previous, { role: "assistant", text: message }]);
+    } finally {
+      setRefineBusy(false);
+    }
+  }
 
   /** Answer one application question from the tailored resume and the posting. */
   async function handleAsk(question: string) {
@@ -502,6 +549,8 @@ function Home() {
                 onSetAll={(accept) => setRejected(accept ? new Set() : new Set(result.changes.map((c) => c.id)))}
               />
             </section>
+
+            <Refine turns={chat} busy={refineBusy} onSend={handleRefine} />
 
             <section className="rounded-xl border border-line bg-surface p-4">
               <button

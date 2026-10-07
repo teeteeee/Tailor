@@ -11,6 +11,8 @@ export type RunPayload = {
   coverage: { before: KeywordHit[]; after: KeywordHit[] };
   rejected: string[];
   answers: Array<{ question: string; text: string }>;
+  /** The refinement conversation. Absent on runs saved before chat existed. */
+  chat?: Array<{ role: "user" | "assistant"; text: string }>;
 };
 
 export type RunSummary = {
@@ -104,12 +106,17 @@ export async function setPinned(userId: string, id: string, pinned: boolean): Pr
 export async function updateRunPayload(
   userId: string,
   id: string,
-  patch: { rejected?: string[]; answers?: Array<{ question: string; text: string }> },
+  patch: {
+    rejected?: string[];
+    answers?: Array<{ question: string; text: string }>;
+    chat?: Array<{ role: "user" | "assistant"; text: string }>;
+  },
 ): Promise<boolean> {
   const sql = db();
   const merged: Record<string, unknown> = {};
   if (patch.rejected) merged.rejected = patch.rejected;
   if (patch.answers) merged.answers = patch.answers;
+  if (patch.chat) merged.chat = patch.chat;
   if (Object.keys(merged).length === 0) return false;
 
   const rows = await sql<{ id: string }[]>`

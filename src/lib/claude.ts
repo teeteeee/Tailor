@@ -4,13 +4,15 @@ import { z } from "zod";
 import { dropNoOpChanges } from "./apply";
 import { groundResult, type TailoredResume } from "./grounding";
 import { normalizeKeywords } from "./keywords";
-import { parseGapFill, parseTailorResult } from "./parse";
+import { parseGapFill, parseRefinement, parseTailorResult } from "./parse";
 import {
   GapFillSchema,
   JobSchema,
+  RefinementSchema,
   TailorResultSchema,
   type GapFill,
   type Job,
+  type Refinement,
   type Resume,
 } from "./schema";
 
@@ -323,6 +325,73 @@ the index the path ends in, which for an appended bullet is the current length o
   });
   const filled = parseGapFill(textOf(response, "Could not place that — the model returned no structured output."));
   return { ...filled, changes: dropNoOpChanges(filled.changes) };
+}
+
+export type RefineTurn = { role: "user" | "assistant"; text: string };
+
+/**
+ * Rework the resume from an instruction the candidate typed.
+ *
+ * The sibling of closeGap: there the candidate supplies evidence for a gap, here
+ * they direct the edit outright — "drop the second Northwind bullet", "move the
+ * automation line to the top", "add that I mentored the new analysts". Either
+ * way what they type is their own words about their own career, which is the
+ * only thing that may become new resume content.
+ *
+ * Returns only the edits. The caller holds the resume and applies them, for the
+ * same reason closing a gap does: re-emitting the whole document to move one
+ * bullet is most of the output and all of the wait.
+ */
+export async function refineResume(
+  resume: Resume,
+  job: Job,
+  instruction: string,
+  history: RefineTurn[] = [],
+): Promise<Refinement> {
+  const client = getClient();
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 16000,
+    output_config: outputConfig(generationFormat(RefinementSchema), "medium"),
+    system: `The candidate is editing their own resume by telling you what to change. Do what they
+ask, to their resume, and nothing besides.
+
+${HONESTY_RULES}
+
+Three further rules for this task specifically:
+- Their instruction is the only new information you have. Anything you add must come from it or
+  from the resume: reword what they told you into resume voice, and stop there. Do not extend it,
+  do not add a metric it does not contain, and do not infer adjacent skills they did not mention.
+- Do only what was asked. If they ask you to remove one bullet, remove that bullet — this is not an
+  invitation to polish the rest. Untouched content stays untouched.
+- If you cannot do it, change nothing and say why in "reply", in one sentence. Reasons to refuse:
+  you cannot tell which part they mean, or doing it would mean writing something neither they nor
+  the resume said. Asking them which role they meant is a better answer than guessing.
+
+Removing is a change like any other: "remove" with the path of what goes, and "after" empty.
+Append to arrays rather than inserting into the middle of them, so existing positions do not move.
+
+Return ONLY the edits, in "changes" — not the resume. Each entry carries a dot path into the resume
+exactly as given to you: "edit" replaces what is at that path, "add" inserts at the index the path
+ends in, which for an appended bullet is the current length of that list, and "remove" takes out
+what is at that path.
+
+In "reply", tell them plainly what you did — "Removed the second Northwind bullet." — or why you did
+nothing. One or two sentences. No preamble, no offers of further help.`,
+    messages: [
+      ...history.slice(-6).map((turn) => ({ role: turn.role, content: turn.text })),
+      {
+        role: "user" as const,
+        content:
+          `${instruction.trim()}\n\n` +
+          `<job>\n${JSON.stringify(job, null, 2)}\n</job>\n\n` +
+          `<resume>\n${JSON.stringify(resume, null, 2)}\n</resume>`,
+      },
+    ],
+  });
+
+  const refined = parseRefinement(textOf(response, "Could not make that change — the model returned no structured output."));
+  return { ...refined, changes: dropNoOpChanges(refined.changes) };
 }
 
 /**

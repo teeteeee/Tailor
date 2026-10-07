@@ -25,7 +25,12 @@ export async function PATCH(request: NextRequest, { params }: Context) {
     const user = await requireUser(request);
     if (user instanceof NextResponse) return user;
 
-    const body = (await request.json()) as { pinned?: boolean; rejected?: string[]; answers?: unknown[] };
+    const body = (await request.json()) as {
+      pinned?: boolean;
+      rejected?: string[];
+      answers?: unknown[];
+      chat?: unknown[];
+    };
     const { id } = await params;
 
     if (typeof body.pinned === "boolean") {
@@ -37,10 +42,13 @@ export async function PATCH(request: NextRequest, { params }: Context) {
     // Rejections and answers happen after the run is first saved, so the stored
     // copy is topped up as they change; otherwise reopening a run would show
     // edits as accepted that were rejected.
-    if (Array.isArray(body.rejected) || Array.isArray(body.answers)) {
+    if (Array.isArray(body.rejected) || Array.isArray(body.answers) || Array.isArray(body.chat)) {
       const saved = await updateRunPayload(user.id, id, {
         rejected: Array.isArray(body.rejected) ? body.rejected.map(String) : undefined,
         answers: Array.isArray(body.answers) ? (body.answers as { question: string; text: string }[]) : undefined,
+        chat: Array.isArray(body.chat)
+          ? (body.chat as { role: "user" | "assistant"; text: string }[])
+          : undefined,
       });
       if (!saved) return NextResponse.json({ error: "No such run." }, { status: 404 });
       return NextResponse.json({ ok: true });

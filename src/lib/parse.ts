@@ -1,4 +1,13 @@
-import { ChangeSchema, GapFillSchema, TailorResultSchema, type Change, type GapFill, type TailorResult } from "./schema";
+import {
+  ChangeSchema,
+  GapFillSchema,
+  RefinementSchema,
+  TailorResultSchema,
+  type Change,
+  type GapFill,
+  type Refinement,
+  type TailorResult,
+} from "./schema";
 import { z } from "zod";
 
 /**
@@ -10,6 +19,7 @@ import { z } from "zod";
  */
 const LenientTailorResult = TailorResultSchema.extend({ changes: z.array(z.unknown()) });
 const LenientGapFill = GapFillSchema.extend({ changes: z.array(z.unknown()) });
+const LenientRefinement = RefinementSchema.extend({ changes: z.array(z.unknown()) });
 
 /**
  * An unrecognised `kind` is the failure worth repairing: the model coins a verb
@@ -46,4 +56,9 @@ export function parseTailorResult(json: string): TailorResult {
 export function parseGapFill(json: string): GapFill {
   const base = LenientGapFill.parse(JSON.parse(json));
   return { ...base, changes: usableChanges(base.changes, "closing a gap") };
+}
+
+export function parseRefinement(json: string): Refinement {
+  const base = LenientRefinement.parse(JSON.parse(json));
+  return { ...base, changes: usableChanges(base.changes, "a refinement") };
 }

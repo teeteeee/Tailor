@@ -36,7 +36,7 @@ const PLACEHOLDER = [
   /^\s*[[(][^\])]*\b(insert|add|list|describe)\b[^\])]*[\])]\s*$/i,
 ];
 
-const looksLikePlaceholder = (value: string): boolean => PLACEHOLDER.some((pattern) => pattern.test(value));
+export const looksLikePlaceholder = (value: string): boolean => PLACEHOLDER.some((pattern) => pattern.test(value));
 
 /** A line is the candidate's own if it came from their resume, or is empty. */
 const isTheirs = (source: string, value: string): boolean => !value.trim() || containsPhrase(source, value);

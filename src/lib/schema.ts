@@ -131,3 +131,24 @@ export const GapFillSchema = z.object({
 });
 
 export type GapFill = z.infer<typeof GapFillSchema>;
+
+/**
+ * The result of a refinement the candidate asked for in their own words
+ * ("drop the second Northwind bullet", "add that I mentored the new analysts").
+ *
+ * Like a gap fill, it carries only the edits: the caller holds the resume and
+ * applies them. `reply` is what the chat says back, so a refusal is a sentence
+ * the candidate can read rather than silence.
+ */
+export const RefinementSchema = z.object({
+  changes: z
+    .array(ChangeSchema)
+    .describe("Only the edits the instruction asks for — not the resume. Empty if you did nothing."),
+  reply: z
+    .string()
+    .describe(
+      "One or two sentences to the candidate: what you changed, or why you changed nothing. Plain, not chatty.",
+    ),
+});
+
+export type Refinement = z.infer<typeof RefinementSchema>;

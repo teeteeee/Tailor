@@ -36,9 +36,21 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   production: neither `APP_PASSWORD` nor `APP_PUBLIC` set means 503, never an open site. API routes
   get 401 JSON, not a redirect. `APP_PUBLIC=true` opens the site to everyone and is deliberately a
   separate setting from an absent password, so an accident cannot publish it.
-- Closing a gap (`/api/close-gap`) is the only path that adds unseen content, and only from the
-  candidate's own words. The model rewords what they wrote and nothing else; unsupported evidence
-  must change nothing and return a reason. Never let a gap be added on a click alone.
+- Closing a gap (`/api/close-gap`) and refining by chat (`/api/refine`) are the only two paths that
+  add unseen content, and only from the candidate's own words. The model rewords what they wrote and
+  nothing else; unsupported evidence must change nothing and return a reason. Never let a gap be
+  added on a click alone.
+- `/api/refine` takes an instruction the candidate typed ("drop the second Northwind bullet", "add
+  that I mentored the new analysts") and returns ONLY change entries, like a gap fill — the resume
+  is assembled by `applyChanges()`. The instruction counts as a source alongside the resume, because
+  it is the candidate stating something about their own career, which is theirs to state. What is
+  not theirs is a figure nobody gave: `screenRefinement()` (`src/lib/refine.ts`) refuses any change
+  whose `after` introduces a number absent from the resume, the instruction and the text being
+  replaced, and refuses placeholder text outright. Numbers compare with their unit attached, so "40
+  minutes" on the resume does not license a new claim of "40%". A refused change is named in the
+  reply, never silently dropped, and when everything is refused the model's own reply is discarded —
+  it describes work that did not happen. Refinements merge into the same change list as tailoring
+  edits, so they stay reviewable and revertable.
 - `/api/tailor` streams newline-delimited JSON (progress lines, then one result line) and runs
   analyzeJob and tailorResume concurrently. Errors after the first byte must travel inside the
   stream as an `error` line — use `describeError()` so the wording matches `errorResponse()`.
